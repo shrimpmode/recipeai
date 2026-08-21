@@ -1,32 +1,8 @@
-## Nutrition Project
-
-This is a project to implement a very simple RAG flow, the stack will be Django, Docker, Postgres, Anthropic API, Celery if Needed 
-A user can have a profile and can set nutrition goals 
-A user can set a prompt that would be like something they want to eat or achieve
-This is not a chat, just a user input that waits for a response
-
-<example id="high fiber diet example">
-Today I would like to eat something high fiber
-</example>
-
-<example id="high protein diet example">
-How can my breakfasts be high protein
-</example>
-
-
-the backend can use a rag flow to resolve the users query 
-
-the ui keeps waiting and loading and after the query is resolved it shows 3 recipes , and their descriptions 
-
-
-## Rag
-we will use this dataset 
+## Dataset
 import pandas as pd
 
 df = pd.read_csv("hf://datasets/datahiveai/recipes-with-nutrition/recipes-with-nutrition.csv")
 
-We will have an admin to create embeddings, but not from the entire dataset 
-Lets start with 100 rows first 
 
 ## Running locally
 
