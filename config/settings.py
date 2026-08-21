@@ -97,11 +97,10 @@ CELERY_TASK_EAGER_PROPAGATES = True
 
 # --- External APIs ------------------------------------------------------
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-# text-embedding-3-small supports a `dimensions` param to shorten its native
-# 1536-dim output; kept at 512 to match the pgvector column width.
-EMBEDDING_DIMENSIONS = 512
+# Embeddings run locally via sentence-transformers (see recipes/services/embeddings.py) -
+# no API key needed. 384 is all-MiniLM-L6-v2's native output size.
+EMBEDDING_DIMENSIONS = 384
 
 # --- RAG pipeline tuning --------------------------------------------------
 RETRIEVAL_CANDIDATE_COUNT = 15

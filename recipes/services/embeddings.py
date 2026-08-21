@@ -1,36 +1,31 @@
-"""Thin wrapper around the OpenAI embeddings API.
+"""Thin wrapper around a local sentence-transformers embedding model.
 
-This module is the seam patched by tests (`recipes.services.embeddings.embed_documents`
-/ `embed_query`) so that ingestion and retrieval logic can be exercised without
-real network calls.
+Runs in-process (CPU inference), no API key or external network call at
+query time. This module is the seam patched by tests
+(`recipes.services.embeddings.embed_documents` / `embed_query`) so that
+ingestion and retrieval logic can be exercised without loading the real
+model.
 """
 
-from django.conf import settings
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-
-_client = None
+_model = None
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        import openai
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
 
-        _client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-    return _client
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+    return _model
 
 
 def embed_documents(texts: list[str]) -> list[list[float]]:
     """Embed recipe text at ingestion time."""
     if not texts:
         return []
-    response = _get_client().embeddings.create(
-        input=texts,
-        model=EMBEDDING_MODEL,
-        dimensions=settings.EMBEDDING_DIMENSIONS,
-    )
-    return [item.embedding for item in response.data]
+    return _get_model().encode(texts, convert_to_numpy=True).tolist()
 
 
 def embed_query(text: str) -> list[float]:

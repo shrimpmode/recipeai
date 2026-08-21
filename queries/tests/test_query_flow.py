@@ -3,8 +3,8 @@
 Celery runs eager (see override_settings below) so the whole pipeline
 (embed -> retrieve -> optionally rerank by goals -> generate) executes
 synchronously inside the test client request. The only things mocked are
-the external API boundaries: OpenAI (`embed_query`) and Claude
-(`select_and_describe`).
+the external/heavyweight boundaries: the local embedding model
+(`embed_query`) and the Claude API (`select_and_describe`).
 """
 
 from unittest.mock import patch
