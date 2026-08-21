@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Nutrition{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+  <nav>
+    {% if user.is_authenticated %}
+      <a href="{% url 'submit-query' %}">Ask</a>
+      <a href="{% url 'edit-profile' %}">Profile</a>
+      <form action="{% url 'logout' %}" method="post" style="display:inline">
+        {% csrf_token %}
+        <button type="submit">Log out</button>
+      </form>
+    {% else %}
+      <a href="{% url 'login' %}">Log in</a>
+    {% endif %}
+  </nav>
+
+  {% for message in messages %}
+    <p>{{ message }}</p>
+  {% endfor %}
+
+  {% block content %}{% endblock %}
+</body>
+</html>

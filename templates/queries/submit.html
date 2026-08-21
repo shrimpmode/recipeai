@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>What would you like to eat?</h1>
+<form hx-post="{% url 'submit-query' %}" hx-target="#result" hx-swap="innerHTML">
+  {% csrf_token %}
+  <input type="text" name="prompt" placeholder="Today I would like to eat something high fiber" required>
+  <button type="submit">Ask</button>
+</form>
+<div id="result"></div>
+{% endblock %}

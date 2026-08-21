@@ -1,0 +1,20 @@
+<div>
+  <h2>Your recipes</h2>
+  {% for recipe in query_request.results %}
+  <article>
+    <h3>{{ recipe.recipe_name }}</h3>
+    {% if recipe.image_url %}<img src="{{ recipe.image_url }}" alt="{{ recipe.recipe_name }}" width="200">{% endif %}
+    <p>{{ recipe.description }}</p>
+    <ul>
+      <li>{{ recipe.calories_per_serving }} kcal</li>
+      <li>{{ recipe.protein_g_per_serving }}g protein</li>
+      <li>{{ recipe.carbs_g_per_serving }}g carbs</li>
+      <li>{{ recipe.fat_g_per_serving }}g fat</li>
+      <li>{{ recipe.fiber_g_per_serving }}g fiber</li>
+      <li>{{ recipe.sugar_g_per_serving }}g sugar</li>
+      <li>{{ recipe.sodium_mg_per_serving }}mg sodium</li>
+    </ul>
+    <a href="{{ recipe.source_url }}">View full recipe</a>
+  </article>
+  {% endfor %}
+</div>
