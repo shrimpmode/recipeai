@@ -78,7 +78,7 @@ def _resolve_once(query_request: QueryRequest) -> list[dict]:
 @shared_task
 def resolve_query(query_request_id: int):
     """Embed the prompt, retrieve/rerank candidates, and have Claude pick and
-    describe the final results. Transient failures (Voyage/Claude API
+    describe the final results. Transient failures (OpenAI/Claude API
     errors) are retried a few times with backoff before the request is
     marked as errored.
 

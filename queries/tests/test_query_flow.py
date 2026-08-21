@@ -3,7 +3,7 @@
 Celery runs eager (see override_settings below) so the whole pipeline
 (embed -> retrieve -> optionally rerank by goals -> generate) executes
 synchronously inside the test client request. The only things mocked are
-the external API boundaries: Voyage (`embed_query`) and Claude
+the external API boundaries: OpenAI (`embed_query`) and Claude
 (`select_and_describe`).
 """
 
@@ -150,13 +150,13 @@ class QueryFlowTests(TestCase):
         self.client.force_login(self.user)
         _make_recipe()
         mock_embed_query.return_value = _embedding(0.0)
-        mock_select_and_describe.side_effect = RuntimeError("voyage/claude unavailable")
+        mock_select_and_describe.side_effect = RuntimeError("openai/claude unavailable")
 
         self.client.post(reverse("submit-query"), {"prompt": "anything"})
 
         query_request = QueryRequest.objects.get(user=self.user)
         self.assertEqual(query_request.status, QueryRequest.Status.ERROR)
-        self.assertIn("voyage/claude unavailable", query_request.error_message)
+        self.assertIn("openai/claude unavailable", query_request.error_message)
         self.assertEqual(mock_select_and_describe.call_count, settings.QUERY_TASK_MAX_RETRIES + 1)
         self.assertEqual(mock_sleep.call_count, settings.QUERY_TASK_MAX_RETRIES)
 

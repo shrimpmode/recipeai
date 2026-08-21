@@ -1,6 +1,6 @@
 """Seam 2: the `embed_recipes` ingestion management command.
 
-The only external boundary mocked is the Voyage embeddings call
+The only external boundary mocked is the OpenAI embeddings call
 (`recipes.services.embeddings.embed_documents`); dataset loading is stubbed
 via `load_raw_dataset` since it's a network call. Curation (dedupe, required
 fields, dish-type diversity) and per-serving nutrition math run for real.
