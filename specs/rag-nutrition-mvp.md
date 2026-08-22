@@ -37,7 +37,7 @@ Users maintain a profile with optional nutrition goals (daily calorie target, pr
 
 ## Implementation Decisions
 
-**Stack**: Django web app, Postgres with the `pgvector` extension, Redis as the Celery broker/result backend, a Celery worker process, Docker Compose for local orchestration. OpenAI (`text-embedding-3-small`) for embeddings. Anthropic Claude Haiku 4.5 for the final recipe selection/description step.
+**Stack**: Django web app, Postgres with the `pgvector` extension, Redis as the Celery broker/result backend, a Celery worker process, Docker Compose for local orchestration. sentence-transformers (`all-MiniLM-L6-v2`, running locally) for embeddings. Anthropic Claude Haiku 4.5 for the final recipe selection/description step.
 
 **Data models**
 - `Profile`: one-to-one with Django's built-in `User`. Holds optional numeric nutrition goal fields: daily calorie target, protein target, carbs target, fat target, fiber target.
@@ -51,18 +51,18 @@ Users maintain a profile with optional nutrition goals (daily calorie target, pr
 **Ingestion (management command)**
 - A management command accepts a row limit (default 100) and pulls from the source dataset (`datahiveai/recipes-with-nutrition`).
 - Selection is curated, not a naive slice: dedupe by `recipe_name`, aim for spread across `meal_type`/`dish_type`/`diet_labels`, skip rows with broken/missing critical fields.
-- For each selected row: parse the JSON-string fields (`total_nutrients`, label arrays), flatten per-serving nutrition values, compose the embedding input text, call OpenAI to generate the embedding, and persist a `Recipe`.
+- For each selected row: parse the JSON-string fields (`total_nutrients`, label arrays), flatten per-serving nutrition values, compose the embedding input text, run the local embedding model to generate the embedding, and persist a `Recipe`.
 
 **Query flow**
 1. User (must be authenticated) submits a prompt via a Django view, which creates a `QueryRequest` (status `pending`) and enqueues a Celery task.
 2. UI shows a loading state and polls a status endpoint until the `QueryRequest` reaches `done` or `error`.
 3. Celery task (status → `running`):
-   a. Embeds the prompt text via OpenAI.
+   a. Embeds the prompt text locally via sentence-transformers.
    b. Retrieves the top 15 candidate recipes by `pgvector` cosine similarity against the prompt embedding.
    c. If the user's `Profile` has any nutrition goals set, re-ranks/scores those 15 candidates by closeness to the goal values on the flattened per-serving nutrition columns, and narrows to the top 5. If no goals are set, skips straight to the top 5 by similarity.
    d. Sends the top 5 candidates (with their nutrition data) plus the original prompt to Claude Haiku 4.5, which selects and writes short descriptions for the final 3.
    e. Persists the 3 results onto the `QueryRequest` and sets status `done`.
-4. On a transient failure calling OpenAI or Claude, the task auto-retries (Celery autoretry, ~2–3 attempts with exponential backoff) before setting status `error`.
+4. On a transient failure calling the local embedding model or Claude, the task auto-retries (Celery autoretry, ~2–3 attempts with exponential backoff) before setting status `error`.
 5. The result always contains exactly 3 recipes — no partial-result UI for sparse matches at this corpus size.
 
 **Frontend**: Django server-rendered templates with light JS/HTMX for the submit → poll → render loop. No SPA framework.
@@ -77,8 +77,8 @@ Tests should exercise external behavior (HTTP requests/responses and command inv
 
 Two seams, agreed with the developer:
 
-1. **Query flow seam (primary)** — Django test client driving the submit-query and poll-status endpoints, with Celery configured to run tasks eagerly (`CELERY_TASK_ALWAYS_EAGER`) so the full pipeline (embed → retrieve → goal-based re-rank → generate) executes synchronously within the test. The OpenAI and Claude HTTP clients are stubbed at their boundary so tests are deterministic, free, and don't require network access. Cases to cover: goals set vs. not set (verifies the re-rank branch is/isn't applied), always-3-results behavior, and the retry-then-error path when the stubbed client is made to fail repeatedly.
-2. **Ingestion seam** — the ingestion management command invoked via `call_command`, with the OpenAI client stubbed the same way. Cases to cover: dedupe/curation behavior on a sample input, correct per-serving flattening math, and re-run with a different limit.
+1. **Query flow seam (primary)** — Django test client driving the submit-query and poll-status endpoints, with Celery configured to run tasks eagerly (`CELERY_TASK_ALWAYS_EAGER`) so the full pipeline (embed → retrieve → goal-based re-rank → generate) executes synchronously within the test. The embedding model and Claude API are stubbed at their boundary so tests are deterministic, free, and don't require network access. Cases to cover: goals set vs. not set (verifies the re-rank branch is/isn't applied), always-3-results behavior, and the retry-then-error path when the stubbed client is made to fail repeatedly.
+2. **Ingestion seam** — the ingestion management command invoked via `call_command`, with the embedding model stubbed the same way. Cases to cover: dedupe/curation behavior on a sample input, correct per-serving flattening math, and re-run with a different limit.
 
 No prior art exists in this codebase yet (greenfield project) — these two seams establish the pattern for future tests in this area.
 
