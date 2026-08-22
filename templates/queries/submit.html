@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>What would you like to eat?</h1>
-<form hx-post="{% url 'submit-query' %}" hx-target="#result" hx-swap="innerHTML">
+<h1 class="mb-6 text-2xl font-semibold text-stone-900">What would you like to eat?</h1>
+<form hx-post="{% url 'submit-query' %}" hx-target="#result" hx-swap="innerHTML"
+      class="flex gap-2">
   {% csrf_token %}
-  <input type="text" name="prompt" placeholder="Today I would like to eat something high fiber" required>
-  <button type="submit">Ask</button>
+  <input type="text" name="prompt" placeholder="Today I would like to eat something high fiber" required
+         class="flex-1 rounded-md border border-stone-300 px-3 py-2 focus:border-emerald-500 focus:outline-none">
+  <button type="submit" class="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700">Ask</button>
 </form>
-<div id="result"></div>
+<div id="result" class="mt-8"></div>
 {% endblock %}

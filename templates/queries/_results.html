@@ -1,20 +1,26 @@
 <div>
-  <h2>Your recipes</h2>
-  {% for recipe in query_request.results %}
-  <article>
-    <h3>{{ recipe.recipe_name }}</h3>
-    {% if recipe.image_url %}<img src="{{ recipe.image_url }}" alt="{{ recipe.recipe_name }}" width="200">{% endif %}
-    <p>{{ recipe.description }}</p>
-    <ul>
-      <li>{{ recipe.calories_per_serving }} kcal</li>
-      <li>{{ recipe.protein_g_per_serving }}g protein</li>
-      <li>{{ recipe.carbs_g_per_serving }}g carbs</li>
-      <li>{{ recipe.fat_g_per_serving }}g fat</li>
-      <li>{{ recipe.fiber_g_per_serving }}g fiber</li>
-      <li>{{ recipe.sugar_g_per_serving }}g sugar</li>
-      <li>{{ recipe.sodium_mg_per_serving }}mg sodium</li>
-    </ul>
-    <a href="{{ recipe.source_url }}">View full recipe</a>
-  </article>
-  {% endfor %}
+  <h2 class="mb-4 text-lg font-semibold text-stone-900">Your recipes</h2>
+  <div class="space-y-4">
+    {% for recipe in query_request.results %}
+    <article class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm sm:flex">
+      {% if recipe.image_url %}
+      <img src="{{ recipe.image_url }}" alt="{{ recipe.recipe_name }}" class="h-40 w-full object-cover sm:h-auto sm:w-40">
+      {% endif %}
+      <div class="flex-1 p-4">
+        <h3 class="text-base font-semibold text-stone-900">{{ recipe.recipe_name }}</h3>
+        <p class="mt-1 text-sm text-stone-600">{{ recipe.description }}</p>
+        <ul class="mt-3 flex flex-wrap gap-2 text-xs text-stone-600">
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.calories_per_serving }} kcal</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.protein_g_per_serving }}g protein</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.carbs_g_per_serving }}g carbs</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.fat_g_per_serving }}g fat</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.fiber_g_per_serving }}g fiber</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.sugar_g_per_serving }}g sugar</li>
+          <li class="rounded-full bg-stone-100 px-2 py-1">{{ recipe.sodium_mg_per_serving }}mg sodium</li>
+        </ul>
+        <a href="{{ recipe.source_url }}" class="mt-3 inline-block text-sm font-medium text-emerald-700 hover:text-emerald-800">View full recipe &rarr;</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
 </div>

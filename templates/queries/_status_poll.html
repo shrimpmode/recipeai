@@ -1,3 +1,5 @@
-<div hx-get="{% url 'query-status' query_request.id %}" hx-trigger="load delay:1s" hx-swap="outerHTML">
+<div hx-get="{% url 'query-status' query_request.id %}" hx-trigger="load delay:1s" hx-swap="outerHTML"
+     class="flex items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3 text-stone-600">
+  <span class="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent"></span>
   <p>Finding recipes for you&hellip;</p>
 </div>
