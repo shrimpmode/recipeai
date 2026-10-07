@@ -208,6 +208,7 @@
     <li><a href="#architecture">2 · Architecture</a></li>
     <li class="sub"><a href="#runtime">Runtime topology</a></li>
     <li class="sub"><a href="#request-flow">Request lifecycle</a></li>
+    <li class="sub"><a href="#keyword-search">Keyword search</a></li>
     <li class="sub"><a href="#modules">Module map</a></li>
     <li><a href="#schema">3 · Schema</a></li>
     <li class="sub"><a href="#er">Entity relationships</a></li>
@@ -421,6 +422,30 @@
     retrying timeouts, 429s and 5xx responses.</p>
   </div>
 
+  <h3 id="keyword-search">Keyword search (no AI)</h3>
+  <p>
+    The search page has an <strong>AI search / Keyword search</strong> switch. Keyword search is
+    <code>GET /search/?q=…</code>. It runs one query synchronously, with no Celery task, embedding or Claude call, and returns
+    at most <code>KEYWORD_SEARCH_RESULT_COUNT</code> (5) recipes, along with the time the search took.
+  </p>
+  <ul>
+    <li><strong>Matching:</strong> every word must appear, ignoring case, in the recipe name or an ingredient line. Recipes whose
+      name contains every word come first, then alphabetical. Only the first 8 words are used.</li>
+    <li><strong>Indexes:</strong> pg_trgm GIN indexes on the same expressions the ORM generates (<code>recipes.models.ingredients_as_text</code>
+      is shared by the index and the query). A test asserts the planner can use both indexes, because a mismatch would fall back to a full scan without any error.</li>
+    <li><strong>Still a full scan:</strong> words under 3 characters (they have no trigrams) and very common words such as <code>salt</code>, which is in about 60% of recipes. For those, Postgres is right to scan.</li>
+  </ul>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Query (38k recipes)</th><th>Before index</th><th>With index</th></tr></thead>
+    <tbody>
+      <tr><td><code>quinoa kale</code></td><td>~160 ms</td><td>1.6 ms</td></tr>
+      <tr><td><code>saffron</code></td><td>~165 ms</td><td>2.5 ms</td></tr>
+      <tr><td><code>chicken</code></td><td>~250 ms</td><td>24 ms</td></tr>
+      <tr><td><code>salt</code></td><td>~205 ms</td><td>~205 ms (full scan)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="caption">End-to-end timings through the ORM on the dev stack. Background: <code>docs/adr/0002-keyword-search-trigram-indexes.md</code>.</p>
+
   <h3 id="modules">Module map</h3>
   <p>
     The code is three Django apps. Code that talks to the outside world (the embedding model, Claude, the Hugging Face Hub)
@@ -431,7 +456,7 @@
       <div class="tag"><span class="pill teal">recipes</span></div>
       <h5>Corpus &amp; vectors</h5>
       <p><code>Recipe</code> and <code>IngestionRun</code> models; <code>corpus_load</code> (staging + merge),
-      <code>embedding_backfill</code> (resumable, takes an <code>Embedder</code> protocol), <code>dataset</code>
+      <code>embedding_backfill</code> (resumable, takes an <code>Embedder</code> protocol), <code>keyword_search</code> (no-AI search behind <code>/search/</code>), <code>dataset</code>
       (source pinning, parsing, embedding text), <code>embeddings</code> (local model adapter).</p>
     </div>
     <div class="card">
@@ -552,7 +577,9 @@
   <p>
     <strong>Constraints &amp; indexes:</strong>
     <code>unique_recipe_name_source_url (recipe_name, source_url)</code>, which the merge's <code>ON CONFLICT</code> targets, and
-    <code>recipe_embedding_hnsw</code> (HNSW, <code>vector_cosine_ops</code>; see <a href="#vector-index">§4</a>).
+    <code>recipe_embedding_hnsw</code> (HNSW, <code>vector_cosine_ops</code>; see <a href="#vector-index">§4</a>), and two pg_trgm GIN
+    indexes for keyword search: <code>recipe_name_trgm</code> on <code>UPPER(recipe_name)</code> and <code>recipe_ingredients_trgm</code>
+    on <code>UPPER(ingredient_lines::text)</code> (see <a href="#keyword-search">keyword search</a>).
   </p>
 
   <div class="schema-table">
@@ -627,6 +654,7 @@
       <tr><td><code>recipes 0002</code></td><td>Changes the vector dimension from 512 to 384 (the MiniLM model).</td><td></td></tr>
       <tr><td><code>recipes 0003</code></td><td><code>IngestionRun</code>; nullable <code>embedding</code>; embedding metadata columns; <code>last_seen_run</code>; staging and reject tables.</td><td>Expand step. Additive only.</td></tr>
       <tr><td><code>recipes 0004</code></td><td><code>AddIndexConcurrently</code> for HNSW, then <code>ANALYZE</code>.</td><td><code>atomic = False</code>. Does not block writes. Best applied <em>after</em> the backfill, so the index is built once over complete data.</td></tr>
+      <tr><td><code>recipes 0005</code></td><td>Enables <code>pg_trgm</code>; <code>AddIndexConcurrently</code> for the two trigram GIN indexes, then <code>ANALYZE</code>.</td><td><code>atomic = False</code>. About 2 s per index on the 38k corpus. Needs <code>django.contrib.postgres</code> in <code>INSTALLED_APPS</code> to render <code>OpClass</code>.</td></tr>
     </tbody>
   </table></div>
 </section>

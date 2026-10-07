@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",  # needed for OpClass in index expressions (recipes trigram indexes)
     "pgvector.django",
     "accounts",
     "recipes",
@@ -138,3 +139,6 @@ RETRIEVAL_CANDIDATE_COUNT = 15
 RETRIEVAL_RERANKED_COUNT = 5
 RESULT_COUNT = 3
 QUERY_TASK_MAX_RETRIES = 3
+
+# --- Keyword search (no AI) -----------------------------------------------
+KEYWORD_SEARCH_RESULT_COUNT = 5

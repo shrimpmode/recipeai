@@ -233,6 +233,8 @@ class QueryFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Tasty.")
+        self.assertContains(response, 'data-testid="search-elapsed"')
+        self.assertContains(response, "Found in")
 
     def test_cannot_poll_another_users_query(self):
         other_user = User.objects.create_user(username="other", password="pw12345!")
