@@ -29,3 +29,9 @@ class QueryRequest(models.Model):
 
     def __str__(self) -> str:
         return f"QueryRequest({self.id}, {self.status})"
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Submit-to-last-update time. Once DONE, that is how long the user waited,
+        including time spent queued for a worker."""
+        return (self.updated_at - self.created_at).total_seconds()

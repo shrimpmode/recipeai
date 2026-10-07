@@ -1,6 +1,15 @@
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
+from django.db.models.functions import Cast, Upper
 from pgvector.django import HnswIndex, VectorField
+
+
+def ingredients_as_text() -> Cast:
+    """`ingredient_lines` (jsonb) as text, for substring search. The trigram
+    index below is built on this exact expression, so keyword search must
+    use it too or Postgres won't match the query to the index."""
+    return Cast("ingredient_lines", output_field=models.TextField())
 
 
 class IngestionRun(models.Model):
@@ -94,6 +103,11 @@ class Recipe(models.Model):
                 ef_construction=64,
                 opclasses=["vector_cosine_ops"],
             ),
+            # Serve keyword search's case-insensitive substring matches (Django's
+            # icontains compiles to UPPER(col) LIKE UPPER(term)); see
+            # recipes.services.keyword_search and docs/adr/0002.
+            GinIndex(OpClass(Upper("recipe_name"), name="gin_trgm_ops"), name="recipe_name_trgm"),
+            GinIndex(OpClass(Upper(ingredients_as_text()), name="gin_trgm_ops"), name="recipe_ingredients_trgm"),
         ]
 
     def __str__(self) -> str:
