@@ -1,8 +1,8 @@
-"""Seam 1: the query submission + polling HTTP flow.
+"""Seam 1: the AI search API (`POST /api/queries` + `GET /api/queries/{id}`).
 
 Celery runs eager (see override_settings below) so the whole pipeline
 (embed -> retrieve -> optionally rerank by goals -> generate) executes
-synchronously inside the test client request. The only things mocked are
+synchronously inside the submit request. The only things mocked are
 the external/heavyweight boundaries: the local embedding model
 (`embed_query`) and the Claude API (`select_and_describe`).
 """
@@ -12,7 +12,6 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
-from django.urls import reverse
 
 from accounts.models import Profile
 from queries.models import QueryRequest
@@ -53,11 +52,13 @@ class QueryFlowTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="alex", password="pw12345!")
 
-    def test_anonymous_user_is_redirected_to_login(self):
-        response = self.client.post(reverse("submit-query"), {"prompt": "high fiber"})
+    def _submit(self, prompt: str):
+        return self.client.post("/api/queries", {"prompt": prompt}, content_type="application/json")
 
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse("login"), response.headers["Location"])
+    def test_anonymous_user_is_redirected_to_login(self):
+        response = self._submit("high fiber")
+
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(QueryRequest.objects.count(), 0)
 
     @patch("queries.services.generation.select_and_describe")
@@ -79,9 +80,10 @@ class QueryFlowTests(TestCase):
             {"recipe_id": recipes[2].id, "description": "Solid choice."},
         ]
 
-        response = self.client.post(reverse("submit-query"), {"prompt": "something high fiber"})
+        response = self._submit("something high fiber")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], "done")
         query_request = QueryRequest.objects.get(user=self.user)
         self.assertEqual(query_request.status, QueryRequest.Status.DONE)
         results = query_request.results
@@ -111,7 +113,7 @@ class QueryFlowTests(TestCase):
             {"recipe_id": far.id, "description": "z"},
         ]
 
-        self.client.post(reverse("submit-query"), {"prompt": "anything"})
+        self._submit("anything")
 
         candidates_sent = mock_select_and_describe.call_args.args[1]
         candidate_ids_in_order = [c["recipe_id"] for c in candidates_sent]
@@ -136,7 +138,7 @@ class QueryFlowTests(TestCase):
             {"recipe_id": far_match.id, "description": "z"},
         ]
 
-        self.client.post(reverse("submit-query"), {"prompt": "high fiber"})
+        self._submit("high fiber")
 
         candidates_sent = mock_select_and_describe.call_args.args[1]
         candidate_ids_in_order = [c["recipe_id"] for c in candidates_sent]
@@ -152,7 +154,7 @@ class QueryFlowTests(TestCase):
         mock_embed_query.return_value = _embedding(0.0)
         mock_select_and_describe.return_value = [{"recipe_id": r.id, "description": "x"} for r in embedded]
 
-        self.client.post(reverse("submit-query"), {"prompt": "anything"})
+        self._submit("anything")
 
         candidate_ids = {c["recipe_id"] for c in mock_select_and_describe.call_args.args[1]}
         self.assertNotIn(pending.id, candidate_ids)
@@ -167,13 +169,18 @@ class QueryFlowTests(TestCase):
         mock_embed_query.return_value = _embedding(0.0)
         mock_select_and_describe.side_effect = RuntimeError("openai/claude unavailable")
 
-        self.client.post(reverse("submit-query"), {"prompt": "anything"})
+        self._submit("anything")
 
         query_request = QueryRequest.objects.get(user=self.user)
         self.assertEqual(query_request.status, QueryRequest.Status.ERROR)
         self.assertIn("openai/claude unavailable", query_request.error_message)
         self.assertEqual(mock_select_and_describe.call_count, settings.QUERY_TASK_MAX_RETRIES + 1)
         self.assertEqual(mock_sleep.call_count, settings.QUERY_TASK_MAX_RETRIES)
+
+        body = self.client.get(f"/api/queries/{query_request.id}").json()
+        self.assertEqual(body["status"], "error")
+        self.assertIsNone(body["results"])
+        self.assertNotIn("unavailable", str(body))  # provider error text stays in the logs
 
     @patch("queries.tasks.time.sleep")
     @patch("queries.services.generation.select_and_describe")
@@ -185,7 +192,7 @@ class QueryFlowTests(TestCase):
         mock_select_and_describe.side_effect = RuntimeError("API key is invalid")
 
         with self.assertLogs("queries.tasks", level="WARNING") as logs:
-            self.client.post(reverse("submit-query"), {"prompt": "anything"})
+            self._submit("anything")
 
         query_request = QueryRequest.objects.get(user=self.user)
         retries = [r for r in logs.records if r.levelname == "WARNING"]
@@ -208,7 +215,7 @@ class QueryFlowTests(TestCase):
         ]
 
         with patch("queries.tasks.time.sleep"):
-            self.client.post(reverse("submit-query"), {"prompt": "anything"})
+            self._submit("anything")
 
         query_request = QueryRequest.objects.get(user=self.user)
         self.assertEqual(query_request.status, QueryRequest.Status.DONE)
@@ -226,21 +233,29 @@ class QueryFlowTests(TestCase):
             {"recipe_id": recipes[2].id, "description": "Great too."},
         ]
 
-        self.client.post(reverse("submit-query"), {"prompt": "anything"})
+        self._submit("anything")
         query_request = QueryRequest.objects.get(user=self.user)
 
-        response = self.client.get(reverse("query-status", args=[query_request.id]))
+        response = self.client.get(f"/api/queries/{query_request.id}")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Tasty.")
-        self.assertContains(response, 'data-testid="search-elapsed"')
-        self.assertContains(response, "Found in")
+        body = response.json()
+        self.assertEqual(body["status"], "done")
+        self.assertEqual([r["description"] for r in body["results"]], ["Tasty.", "Also tasty.", "Great too."])
+        self.assertGreaterEqual(body["elapsed_seconds"], 0)
 
     def test_cannot_poll_another_users_query(self):
         other_user = User.objects.create_user(username="other", password="pw12345!")
         query_request = QueryRequest.objects.create(user=other_user, prompt="secret", status=QueryRequest.Status.DONE)
 
         self.client.force_login(self.user)
-        response = self.client.get(reverse("query-status", args=[query_request.id]))
+        response = self.client.get(f"/api/queries/{query_request.id}")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_blank_prompt_is_rejected(self):
+        self.client.force_login(self.user)
+
+        for prompt in ("", "   "):
+            self.assertEqual(self._submit(prompt).status_code, 422)
+        self.assertEqual(QueryRequest.objects.count(), 0)

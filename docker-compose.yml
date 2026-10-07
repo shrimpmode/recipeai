@@ -30,6 +30,7 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     env_file: .env
@@ -47,6 +48,8 @@ services:
     command: celery -A config worker -l info
     volumes:
       - .:/app
+      # Embedding model weights survive container recreation.
+      - hf_cache:/root/.cache/huggingface
     env_file: .env
     environment:
       POSTGRES_HOST: db
@@ -57,5 +60,23 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend:/app
+      # Keep the container's own (Linux) node_modules and build cache, not the host's.
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://web:8000
+      NEXT_PUBLIC_BACKEND_PUBLIC_URL: http://localhost:8000
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
+  hf_cache:

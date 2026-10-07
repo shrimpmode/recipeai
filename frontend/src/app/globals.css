@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/*
+ * Flat palette: solid fills and hairline borders, no shadows or gradients.
+ * Each token holds its light and dark value via light-dark(), resolved by `color-scheme`:
+ * the system preference by default, or the visitor's choice pinned by data-theme
+ * (set before first paint by the script in app/layout.tsx; see components/theme-toggle.tsx).
+ * Dark is deliberately neutral: grey surfaces and a monochrome accent, no greens.
+ */
+:root {
+  color-scheme: light dark;
+  --paper: light-dark(#f6f4ef, #141414);
+  --surface: light-dark(#ffffff, #1c1c1c);
+  --sunken: light-dark(#eeebe4, #262626);
+  --ink: light-dark(#1c2420, #ececec);
+  --muted: light-dark(#5c6862, #a8a8a8);
+  --faint: light-dark(#8d9690, #757575);
+  --line: light-dark(#e2ded5, #2e2e2e);
+  --accent: light-dark(#1f6f5c, #ececec);
+  --accent-hover: light-dark(#185a4a, #ffffff);
+  --accent-ink: light-dark(#ffffff, #141414);
+  --accent-soft: light-dark(#dfede7, #2c2c2c);
+  --danger: light-dark(#b0423a, #f08a80);
+  --danger-soft: light-dark(#f6e2df, #3a1c19);
+  --protein: light-dark(#3e6eb0, #7ea6e0);
+  --carbs: light-dark(#d6a03c, #e8bd66);
+  --fat: light-dark(#c9573f, #e88a72);
+  --fiber: light-dark(#4e8a5a, #b49be8);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-protein: var(--protein);
+  --color-carbs: var(--carbs);
+  --color-fat: var(--fat);
+  --color-fiber: var(--fiber);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

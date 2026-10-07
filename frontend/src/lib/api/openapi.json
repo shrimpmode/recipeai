@@ -1,0 +1,795 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nutrition API",
+    "version": "1",
+    "description": ""
+  },
+  "paths": {
+    "/api/auth/csrf": {
+      "get": {
+        "operationId": "accounts_api_csrf",
+        "summary": "Csrf",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "description": "Sets the `csrftoken` cookie; call once before the first unsafe request.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "accounts_api_login_view",
+        "summary": "Login View",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "accounts_api_logout_view",
+        "summary": "Logout View",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "accounts_api_me",
+        "summary": "Me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "operationId": "accounts_api_get_goals",
+        "summary": "Get Goals",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goals"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "profile"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "accounts_api_update_goals",
+        "summary": "Update Goals",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Goals"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "profile"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Goals"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/queries": {
+      "post": {
+        "operationId": "queries_api_submit_query",
+        "summary": "Submit Query",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Queue an AI search; poll `GET /api/queries/{id}` until status is done or error.\nThe error text is logged server-side, not returned: it can contain provider details.",
+        "tags": [
+          "ai-search"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/queries/{query_request_id}": {
+      "get": {
+        "operationId": "queries_api_query_status",
+        "summary": "Query Status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_request_id",
+            "schema": {
+              "title": "Query Request Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ai-search"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "operationId": "recipes_api_keyword_search",
+        "summary": "Keyword Search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "\\S",
+              "title": "Q",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Search without AI: synchronous, at most KEYWORD_SEARCH_RESULT_COUNT recipes.\n`elapsed_ms` is database search time, measured here.",
+        "tags": [
+          "keyword-search"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Me": {
+        "properties": {
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "is_staff": {
+            "title": "Is Staff",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "username",
+          "is_staff"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "Credentials": {
+        "properties": {
+          "username": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "Credentials",
+        "type": "object"
+      },
+      "Goals": {
+        "properties": {
+          "daily_calorie_target": {
+            "anyOf": [
+              {
+                "maximum": 20000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Calorie Target"
+          },
+          "protein_target_g": {
+            "anyOf": [
+              {
+                "maximum": 20000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein Target G"
+          },
+          "carbs_target_g": {
+            "anyOf": [
+              {
+                "maximum": 20000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbs Target G"
+          },
+          "fat_target_g": {
+            "anyOf": [
+              {
+                "maximum": 20000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat Target G"
+          },
+          "fiber_target_g": {
+            "anyOf": [
+              {
+                "maximum": 20000,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber Target G"
+          }
+        },
+        "title": "Goals",
+        "type": "object"
+      },
+      "QueryOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ResultOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Results"
+          },
+          "elapsed_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Seconds"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "results",
+          "elapsed_seconds"
+        ],
+        "title": "QueryOut",
+        "type": "object"
+      },
+      "ResultOut": {
+        "description": "One entry of `QueryRequest.results` (see `queries.tasks._serialize_result`).",
+        "properties": {
+          "recipe_id": {
+            "title": "Recipe Id",
+            "type": "integer"
+          },
+          "recipe_name": {
+            "title": "Recipe Name",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "calories_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Per Serving"
+          },
+          "protein_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G Per Serving"
+          },
+          "carbs_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbs G Per Serving"
+          },
+          "fat_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G Per Serving"
+          },
+          "fiber_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G Per Serving"
+          },
+          "sugar_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sugar G Per Serving"
+          },
+          "sodium_mg_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sodium Mg Per Serving"
+          }
+        },
+        "required": [
+          "recipe_id",
+          "recipe_name",
+          "description",
+          "source_url",
+          "image_url",
+          "calories_per_serving",
+          "protein_g_per_serving",
+          "carbs_g_per_serving",
+          "fat_g_per_serving",
+          "fiber_g_per_serving",
+          "sugar_g_per_serving",
+          "sodium_mg_per_serving"
+        ],
+        "title": "ResultOut",
+        "type": "object"
+      },
+      "Status": {
+        "enum": [
+          "pending",
+          "running",
+          "done",
+          "error"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "QueryIn": {
+        "properties": {
+          "prompt": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "QueryIn",
+        "type": "object"
+      },
+      "SearchParams": {
+        "properties": {
+          "q": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Q",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "SearchParams",
+        "type": "object"
+      },
+      "RecipeOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "recipe_name": {
+            "title": "Recipe Name",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "calories_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Per Serving"
+          },
+          "protein_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G Per Serving"
+          },
+          "carbs_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbs G Per Serving"
+          },
+          "fat_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G Per Serving"
+          },
+          "fiber_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G Per Serving"
+          },
+          "sugar_g_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sugar G Per Serving"
+          },
+          "sodium_mg_per_serving": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sodium Mg Per Serving"
+          }
+        },
+        "required": [
+          "id",
+          "recipe_name",
+          "source_url",
+          "image_url",
+          "calories_per_serving",
+          "protein_g_per_serving",
+          "carbs_g_per_serving",
+          "fat_g_per_serving",
+          "fiber_g_per_serving",
+          "sugar_g_per_serving",
+          "sodium_mg_per_serving"
+        ],
+        "title": "RecipeOut",
+        "type": "object"
+      },
+      "SearchOut": {
+        "properties": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RecipeOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "query",
+          "results",
+          "elapsed_ms"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "SessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sessionid"
+      }
+    }
+  },
+  "servers": []
+}

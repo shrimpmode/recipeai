@@ -239,7 +239,8 @@
     the user's nutrition goals. Covers the architecture, the database schema, the pgvector search layer and how to run it.
   </p>
   <div class="meta">
-    <span class="pill teal">Django 5.1</span>
+    <span class="pill teal">Next.js 16</span>
+    <span class="pill teal">Django 5.1 · django-ninja</span>
     <span class="pill indigo">Postgres 16 + pgvector 0.8</span>
     <span class="pill amber">Celery + Redis</span>
     <span class="pill">all-MiniLM-L6-v2 · 384d</span>
@@ -280,10 +281,12 @@
 
   <h3 id="runtime">Runtime topology</h3>
   <p>
-    There are two processes, <code>web</code> and <code>worker</code>, and both run the same image and the same Django
-    project. Neither keeps state of its own: everything persistent lives in Postgres, and Redis only carries the task
-    queue. The web process never calls the embedding model or Claude. It records the request, puts a task on the
-    queue and returns, so a slow LLM call cannot hold up a web worker.
+    The browser only talks to the <strong>Next.js frontend</strong> (<code>frontend/</code>, port 3000). It serves the pages and
+    proxies <code>/api/*</code> to Django, so the session and CSRF cookies live on one origin (ADR 0003). Behind it are two
+    Django processes, <code>web</code> (the JSON API, admin and this manual) and <code>worker</code> (Celery), which run the same
+    image. None of them keeps state of its own: everything persistent lives in Postgres, and Redis only carries the task
+    queue. The API never calls the embedding model or Claude for AI search. It records the request, puts a task on the
+    queue and returns 202, so a slow LLM call cannot hold up a web worker.
   </p>
 
   <div class="figure">
@@ -302,12 +305,12 @@
 
       <!-- Request path -->
       <rect class="d-box" x="20" y="50" width="150" height="62" rx="8"/>
-      <text class="d-t" x="95" y="77" text-anchor="middle">Browser</text>
-      <text class="d-s" x="95" y="95" text-anchor="middle">HTMX · polls status</text>
+      <text class="d-t" x="95" y="77" text-anchor="middle">Next.js</text>
+      <text class="d-s" x="95" y="95" text-anchor="middle">pages · /api proxy</text>
 
       <rect class="d-box accent" x="240" y="50" width="170" height="62" rx="8"/>
       <text class="d-t" x="325" y="77" text-anchor="middle">web</text>
-      <text class="d-s" x="325" y="95" text-anchor="middle">Django · views</text>
+      <text class="d-s" x="325" y="95" text-anchor="middle">Django · /api</text>
 
       <rect class="d-box amber" x="480" y="50" width="150" height="62" rx="8"/>
       <text class="d-t" x="555" y="77" text-anchor="middle">Redis 7</text>
@@ -373,9 +376,9 @@
   <h3 id="request-flow">Request lifecycle</h3>
   <ol class="steps">
     <li>
-      <strong>Submit.</strong> <code>POST /</code> creates a <code>QueryRequest</code> (status <code>pending</code>),
-      calls <code>resolve_query.delay(id)</code> and returns a small HTMX fragment that polls for the result.
-      <div class="where">queries/views.py · submit_query</div>
+      <strong>Submit.</strong> <code>POST /api/queries</code> creates a <code>QueryRequest</code> (status <code>pending</code>),
+      calls <code>resolve_query.delay(id)</code> and returns <code>202</code> with the request's id. The search page then polls once a second.
+      <div class="where">queries/api.py · submit_query · frontend/src/components/search/search-panel.tsx</div>
     </li>
     <li>
       <strong>Pick up.</strong> The worker marks the request <code>running</code> and logs <code>query_resolution_started</code>
@@ -409,9 +412,10 @@
       <div class="where">queries/tasks.py</div>
     </li>
     <li>
-      <strong>Poll.</strong> <code>GET /queries/&lt;id&gt;/status/</code> returns the results, the error message, or
-      another polling fragment. It is scoped to the owner, so asking for another user's request returns 404.
-      <div class="where">queries/views.py · query_status</div>
+      <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the results once done, and
+      <code>elapsed_seconds</code> once finished. The provider's error text is logged but never returned. It is scoped to the owner,
+      so asking for another user's request returns 404.
+      <div class="where">queries/api.py · query_status</div>
     </li>
   </ol>
 
@@ -425,7 +429,7 @@
   <h3 id="keyword-search">Keyword search (no AI)</h3>
   <p>
     The search page has an <strong>AI search / Keyword search</strong> switch. Keyword search is
-    <code>GET /search/?q=…</code>. It runs one query synchronously, with no Celery task, embedding or Claude call, and returns
+    <code>GET /api/search?q=…</code>. It runs one query synchronously, with no Celery task, embedding or Claude call, and returns
     at most <code>KEYWORD_SEARCH_RESULT_COUNT</code> (5) recipes, along with the time the search took.
   </p>
   <ul>
@@ -448,7 +452,8 @@
 
   <h3 id="modules">Module map</h3>
   <p>
-    The code is three Django apps. Code that talks to the outside world (the embedding model, Claude, the Hugging Face Hub)
+    The backend is three Django apps, each exposing its slice of the API in an <code>api.py</code> router (assembled in
+    <code>config/api.py</code>); the frontend is a separate Next.js app. Code that talks to the outside world (the embedding model, Claude, the Hugging Face Hub)
     sits in small adapter modules at the edges. Tests replace those modules and leave the logic inside them untouched.
   </p>
   <div class="cards">
@@ -456,7 +461,7 @@
       <div class="tag"><span class="pill teal">recipes</span></div>
       <h5>Corpus &amp; vectors</h5>
       <p><code>Recipe</code> and <code>IngestionRun</code> models; <code>corpus_load</code> (staging + merge),
-      <code>embedding_backfill</code> (resumable, takes an <code>Embedder</code> protocol), <code>keyword_search</code> (no-AI search behind <code>/search/</code>), <code>dataset</code>
+      <code>embedding_backfill</code> (resumable, takes an <code>Embedder</code> protocol), <code>keyword_search</code> (no-AI search behind <code>/api/search</code>), <code>dataset</code>
       (source pinning, parsing, embedding text), <code>embeddings</code> (local model adapter).</p>
     </div>
     <div class="card">
@@ -475,7 +480,15 @@
       <div class="tag"><span class="pill">config</span></div>
       <h5>Wiring</h5>
       <p>Settings come from the environment and are checked at startup (an invalid <code>LOG_LEVEL</code> stops the app from starting). Also here: the Celery app,
-      URL routing and <code>KeyValueFormatter</code> for structured logs.</p>
+      URL routing, the django-ninja API (<code>config/api.py</code>, OpenAPI at <code>/api/openapi.json</code>) and
+      <code>KeyValueFormatter</code> for structured logs.</p>
+    </div>
+    <div class="card">
+      <div class="tag"><span class="pill teal">frontend</span></div>
+      <h5>Next.js UI</h5>
+      <p>Login, search (AI and keyword) and goals pages. <code>src/lib/api</code> is a client typed from the API's OpenAPI
+      schema (<code>pnpm gen:api</code>), and <code>src/proxy.ts</code> sends visitors without a session to <code>/login</code>.
+      Playwright E2E tests are in <code>e2e/</code>.</p>
     </div>
   </div>
 </section>
@@ -944,7 +957,12 @@ uv run mypy .                             <span class="c"># types: authoritative
                                           <span class="c"># pyright (basic) is for editor feedback only</span>
 docker compose up -d db redis
 POSTGRES_HOST=localhost uv run python manage.py migrate
-POSTGRES_HOST=localhost uv run python manage.py test</code></pre>
+POSTGRES_HOST=localhost uv run python manage.py test
+
+cd frontend
+pnpm lint &amp;&amp; pnpm typecheck                <span class="c"># frontend checks</span>
+pnpm gen:api                              <span class="c"># after an API change: regenerate the typed client</span>
+pnpm test:e2e                             <span class="c"># Playwright; start the stack with docker-compose.e2e.yml first</span></code></pre>
   <div class="cards">
     <div class="card"><h5>Real database in tests</h5><p>Tests run against the real pgvector container: the merge SQL, <code>COPY</code>, the advisory lock and the HNSW index are all tested against Postgres itself.</p></div>
     <div class="card"><h5>Fakes only at the edges</h5><p>The embedding model is swapped for a <code>FakeEmbedder</code> passed in through the <code>Embedder</code> protocol; the Claude call is patched at <code>generation.select_and_describe</code>.</p></div>
