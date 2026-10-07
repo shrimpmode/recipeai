@@ -32,7 +32,7 @@ class Command(BaseCommand):
             )
 
         created, updated = 0, 0
-        for fields, embedding in zip(rows_fields, embeddings):
+        for fields, embedding in zip(rows_fields, embeddings, strict=True):
             _, was_created = Recipe.objects.update_or_create(
                 recipe_name=fields["recipe_name"],
                 source_url=fields["source_url"],

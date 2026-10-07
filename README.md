@@ -42,21 +42,54 @@ The `embed_recipes` management command pulls a curated batch from this dataset (
 
 ```
 cp .env.example .env   # fill in ANTHROPIC_API_KEY (embeddings run locally, no key needed)
-docker compose up --build
+docker compose up --build   # image installs deps from uv.lock
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
-docker compose exec web python manage.py embed_recipes --limit 100
+docker compose exec web python manage.py embed_recipes --limit 100   # quick dev seed
 ```
 
+### Loading the full dataset
+
+The full corpus (39,447 rows, pinned to a specific Parquet commit on the Hub) is loaded in two steps, then indexed. Every step is safe to re-run; see [ADR 0001](docs/adr/0001-corpus-load-pipeline.md).
+
+```
+docker compose exec db pg_dump -U nutrition -Fc nutrition > backup.dump   # before the first load
+docker compose run --rm worker python manage.py migrate recipes 0003      # schema only, no vector index yet
+docker compose run --rm worker python manage.py load_corpus               # fetch -> stage (COPY) -> merge; seconds
+docker compose run --rm worker python manage.py backfill_embeddings       # slow; Ctrl-C safe, re-run to resume
+docker compose run --rm worker python manage.py migrate                   # HNSW index on embeddings
+```
+
+`load_corpus` records each run in `IngestionRun` (source revision, file SHA-256, row counts) and fails unless source rows = staged + rejected. Rejected rows and their reasons are in the `ingestion_reject` table. Recipes appear in search results once they have an embedding.
+
 Then visit http://localhost:8000/, log in, set nutrition goals under "Profile", and submit a query.
+
+### Local development
+
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) (`pyproject.toml` + `uv.lock`). `uv sync` creates `.venv` with the app and dev tools.
+
+```
+uv sync                          # install / update .venv from uv.lock
+uv add <package>                 # add a dependency (updates pyproject.toml + uv.lock)
+uv add --dev <package>           # add a dev-only tool
+```
+
+### Lint, format, type-check
+
+```
+uv run ruff format .             # format
+uv run ruff check --fix .        # lint (+ safe autofixes)
+uv run mypy .                    # type-check (Django plugin; the authoritative check)
+```
+
+Editors: `[tool.pyright]` in `pyproject.toml` points Pyright/basedpyright at `.venv`, so Neovim's LSP resolves imports with no extra setup. Use ruff's LSP (`ruff server`) for lint and format-on-save.
 
 ### Running tests
 
 ```
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
 docker compose up -d db redis
-.venv/bin/python manage.py migrate
-.venv/bin/python manage.py test
+POSTGRES_HOST=localhost uv run python manage.py migrate
+POSTGRES_HOST=localhost uv run python manage.py test
 ```
 
 Tests need a real Postgres with the `pgvector` extension (via `docker compose up -d db`) since recipe embeddings use a `VectorField`; the Claude API call is mocked in tests (embeddings run locally via sentence-transformers), so no API keys are required to run the suite.

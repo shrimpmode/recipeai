@@ -15,6 +15,10 @@ class QueryRequest(models.Model):
         DONE = "done", "Done"
         ERROR = "error", "Error"
 
+    # Declared for Pyright, which can't see Django's implicit fields (mypy's plugin can).
+    id: int
+    user_id: int
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="query_requests")
     prompt = models.TextField()
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)

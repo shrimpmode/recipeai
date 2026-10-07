@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -85,6 +86,34 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "submit-query"
 LOGOUT_REDIRECT_URL = "login"
 
+# --- Logging ------------------------------------------------------------
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+if LOG_LEVEL not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+    raise ImproperlyConfigured(f"LOG_LEVEL must be a standard logging level, got {LOG_LEVEL!r}")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "kv": {
+            "()": "config.logging.KeyValueFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "kv"},
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+    "loggers": {
+        # Django's default config also logs to console; don't print those twice.
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # Per-request chatter from the HTTP and model-loading libraries.
+        "httpx": {"level": "WARNING"},
+        "huggingface_hub": {"level": "WARNING"},
+        "sentence_transformers": {"level": "WARNING"},
+    },
+}
+
 # --- Celery -----------------------------------------------------------
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
@@ -94,6 +123,8 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true"
 CELERY_TASK_EAGER_PROPAGATES = True
+# Use LOGGING above in the worker too, instead of Celery replacing the root logger.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
 # --- External APIs ------------------------------------------------------
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")

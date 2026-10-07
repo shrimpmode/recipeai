@@ -1,15 +1,24 @@
 """Loading and curating rows from the source recipe dataset.
 
-`load_raw_dataset` is the only function that touches the network; everything
-else is pure pandas/dict logic so it's cheap to unit test.
+`load_raw_dataset` and `fetch_source` are the only functions that touch the
+network; everything else is pure pandas/dict logic so it's cheap to unit test.
 """
 
+import hashlib
 import json
 import math
+from pathlib import Path
 
 import pandas as pd
 
-DATASET_URI = "hf://datasets/datahiveai/recipes-with-nutrition/recipes-with-nutrition.csv"
+SOURCE_REPO = "datahiveai/recipes-with-nutrition"
+DATASET_URI = f"hf://datasets/{SOURCE_REPO}/recipes-with-nutrition.csv"
+
+# The Hub's auto-converted Parquet copy (100 MB vs the 450 MB CSV), pinned to
+# the commit of `refs/convert/parquet` built from the 2025-09-25 upload
+# (main = 33ff70ba). That branch can be regenerated, so bump this deliberately.
+PARQUET_REVISION = "4e4a273605c7dac8edd55f7e5ba69cb1694406a8"
+PARQUET_FILE = "default/train/0000.parquet"
 
 REQUIRED_COLUMNS = ["recipe_name", "calories", "servings", "total_nutrients"]
 
@@ -29,14 +38,23 @@ def load_raw_dataset() -> pd.DataFrame:
     return pd.read_csv(DATASET_URI)
 
 
+def fetch_source(revision: str = PARQUET_REVISION) -> Path:
+    """Download (or reuse from the local Hugging Face cache) the pinned Parquet file."""
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download(repo_id=SOURCE_REPO, repo_type="dataset", filename=PARQUET_FILE, revision=revision))
+
+
 def _parse_json_field(value, default):
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return default
     if isinstance(value, (list, dict)):
         return value
+    if not isinstance(value, str):
+        return default
     try:
         return json.loads(value)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError:
         return default
 
 
@@ -51,8 +69,8 @@ def select_curated_batch(df: pd.DataFrame, limit: int) -> pd.DataFrame:
     taking a naive slice of the dataset.
     """
     clean = df.dropna(subset=REQUIRED_COLUMNS)
-    clean = clean[clean["servings"] > 0]
-    deduped = clean.drop_duplicates(subset="recipe_name", keep="first").copy()
+    clean = clean.loc[clean["servings"] > 0]
+    deduped = clean.drop_duplicates(subset=["recipe_name"], keep="first").copy()
 
     if deduped.empty:
         return deduped
@@ -63,7 +81,7 @@ def select_curated_batch(df: pd.DataFrame, limit: int) -> pd.DataFrame:
         deduped["_dish_type_key"] = "unknown"
     groups = {key: list(group.index) for key, group in deduped.groupby("_dish_type_key")}
     group_keys = list(groups.keys())
-    pointers = {key: 0 for key in group_keys}
+    pointers = dict.fromkeys(group_keys, 0)
 
     selected_index: list[int] = []
     while len(selected_index) < limit and any(pointers[key] < len(groups[key]) for key in group_keys):
@@ -108,6 +126,32 @@ def parse_row_to_recipe_fields(row) -> dict:
         "dish_type": _parse_json_field(row.get("dish_type"), []),
         **nutrient_fields,
     }
+
+
+# Every Recipe field `compose_embedding_text` reads.
+EMBEDDING_TEXT_FIELDS = (
+    "recipe_name",
+    "ingredient_lines",
+    "diet_labels",
+    "health_labels",
+    "meal_type",
+    "dish_type",
+    "calories_per_serving",
+    "protein_g_per_serving",
+    "fiber_g_per_serving",
+    "carbs_g_per_serving",
+    "fat_g_per_serving",
+)
+
+
+def embedding_text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def embedding_input_hash(fields: dict) -> str:
+    """Fingerprint of what gets embedded for `fields`: equal hashes mean an
+    existing embedding is still valid for the current embedding model."""
+    return embedding_text_hash(compose_embedding_text(fields))
 
 
 def compose_embedding_text(fields: dict) -> str:
