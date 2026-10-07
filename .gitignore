@@ -12,3 +12,13 @@ media/
 .pytest_cache/
 .DS_Store
 *.log
+.ruff_cache/
+.env.*
+!.env.example
+*.dump
+dist/
+build/
+.coverage
+htmlcov/
+.idea/
+.vscode/

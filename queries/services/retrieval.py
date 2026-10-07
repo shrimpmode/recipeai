@@ -26,7 +26,9 @@ GOAL_TO_RECIPE_FIELD = {
 
 def retrieve_by_similarity(prompt: str, limit: int) -> list[Recipe]:
     query_embedding = embed_query(prompt)
-    return list(Recipe.objects.order_by(CosineDistance("embedding", query_embedding))[:limit])
+    # Recipes loaded but not yet embedded (backfill_embeddings pending) are skipped.
+    recipes = Recipe.objects.filter(embedding__isnull=False)
+    return list(recipes.order_by(CosineDistance("embedding", query_embedding))[:limit])
 
 
 def _goal_closeness_score(recipe: Recipe, profile: Profile) -> float:

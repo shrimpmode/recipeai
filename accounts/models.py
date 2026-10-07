@@ -10,6 +10,10 @@ class Profile(models.Model):
     similarity (see queries.services.retrieval).
     """
 
+    # Declared for Pyright, which can't see Django's implicit fields (mypy's plugin can).
+    id: int
+    user_id: int
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
 
     daily_calorie_target = models.FloatField(null=True, blank=True)
@@ -17,6 +21,9 @@ class Profile(models.Model):
     carbs_target_g = models.FloatField(null=True, blank=True)
     fat_target_g = models.FloatField(null=True, blank=True)
     fiber_target_g = models.FloatField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"Profile({self.user})"
 
     def has_goals(self) -> bool:
         return any(
@@ -29,6 +36,3 @@ class Profile(models.Model):
                 self.fiber_target_g,
             )
         )
-
-    def __str__(self) -> str:
-        return f"Profile({self.user})"

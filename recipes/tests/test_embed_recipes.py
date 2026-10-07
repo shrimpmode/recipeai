@@ -89,6 +89,7 @@ class EmbedRecipesCommandTests(TestCase):
         self.assertEqual(soup_a.fiber_g_per_serving, 3.0)
         self.assertEqual(soup_a.sugar_g_per_serving, 4.0)
         self.assertEqual(soup_a.sodium_mg_per_serving, 200.0)
+        assert soup_a.embedding is not None
         self.assertEqual(len(soup_a.embedding), settings.EMBEDDING_DIMENSIONS)
 
     @patch("recipes.services.embeddings.embed_documents", side_effect=_fake_embed_documents)

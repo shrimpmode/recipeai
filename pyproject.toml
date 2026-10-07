@@ -1,3 +1,72 @@
+[project]
+name = "nutrition"
+version = "0.1.0"
+description = "Nutrition-goal recipe recommendations: Django + pgvector RAG with Claude."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "django>=5.0,<5.2",
+    "psycopg[binary]>=3.1",
+    "pgvector>=0.3.0",
+    "celery>=5.3",
+    "redis>=5.0",
+    "anthropic>=0.34",
+    "sentence-transformers>=3.0",
+    # Listed directly only so [tool.uv.sources] can route it to the CPU-only build.
+    "torch>=2.14",
+    "pandas>=2.0",
+    "pyarrow>=17",
+    "huggingface-hub>=0.24",
+    "fsspec>=2024.6",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13",
+    "mypy>=1.10",
+    "django-stubs>=5.0",
+]
+
+[tool.uv]
+# A Django app, not a distributable library: install dependencies only.
+package = false
+
+# Embeddings run on CPU (see recipes/services/embeddings.py). PyPI's Linux torch
+# wheels bundle CUDA (~40 nvidia-* packages, several GB of image); the CPU index
+# doesn't. macOS keeps PyPI, whose wheels are already CPU/MPS-only.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "B",       # bugbear
+    "UP",      # pyupgrade
+    "C4",      # comprehensions
+    "SIM",     # simplify
+    "DJ",      # flake8-django
+    "RUF",     # ruff-specific
+]
+ignore = [
+    "RUF012",  # flags Django's Meta.fields / constraints / indexes lists, which Django requires as class attributes
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["accounts", "config", "queries", "recipes"]
+
 [tool.mypy]
 python_version = "3.12"
 plugins = ["mypy_django_plugin.main"]
@@ -6,3 +75,14 @@ check_untyped_defs = true
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
+
+# Editor type checking (Pyright / basedpyright LSP, e.g. in Neovim). mypy with
+# the Django plugin stays the CI gate; this config makes the LSP resolve the
+# uv-managed .venv and keeps its diagnostics in line with mypy's strictness.
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+include = ["accounts", "config", "queries", "recipes", "manage.py"]
+exclude = ["**/migrations", "**/__pycache__", ".venv"]
+typeCheckingMode = "basic"

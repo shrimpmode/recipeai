@@ -24,26 +24,26 @@ def _embedding(seed: float) -> list[float]:
 
 
 def _make_recipe(**overrides) -> Recipe:
-    defaults = dict(
-        recipe_name="Recipe",
-        source_url="https://example.com/recipe",
-        servings=2,
-        ingredient_lines=["stuff"],
-        diet_labels=[],
-        health_labels=[],
-        cautions=[],
-        cuisine_type=[],
-        meal_type=[],
-        dish_type=[],
-        calories_per_serving=300,
-        protein_g_per_serving=10,
-        carbs_g_per_serving=30,
-        fat_g_per_serving=10,
-        fiber_g_per_serving=5,
-        sugar_g_per_serving=5,
-        sodium_mg_per_serving=200,
-        embedding=_embedding(0.1),
-    )
+    defaults = {
+        "recipe_name": "Recipe",
+        "source_url": "https://example.com/recipe",
+        "servings": 2,
+        "ingredient_lines": ["stuff"],
+        "diet_labels": [],
+        "health_labels": [],
+        "cautions": [],
+        "cuisine_type": [],
+        "meal_type": [],
+        "dish_type": [],
+        "calories_per_serving": 300,
+        "protein_g_per_serving": 10,
+        "carbs_g_per_serving": 30,
+        "fat_g_per_serving": 10,
+        "fiber_g_per_serving": 5,
+        "sugar_g_per_serving": 5,
+        "sodium_mg_per_serving": 200,
+        "embedding": _embedding(0.1),
+    }
     defaults.update(overrides)
     return Recipe.objects.create(**defaults)
 
@@ -143,6 +143,21 @@ class QueryFlowTests(TestCase):
         self.assertEqual(candidate_ids_in_order[0], close_match.id)
         self.assertIn(far_match.id, candidate_ids_in_order)
 
+    @patch("queries.services.generation.select_and_describe")
+    @patch("queries.services.retrieval.embed_query")
+    def test_recipes_without_embeddings_are_never_candidates(self, mock_embed_query, mock_select_and_describe):
+        self.client.force_login(self.user)
+        embedded = [_make_recipe(recipe_name=f"Embedded {i}", source_url=f"https://example.com/{i}") for i in range(3)]
+        pending = _make_recipe(recipe_name="Not yet embedded", embedding=None)
+        mock_embed_query.return_value = _embedding(0.0)
+        mock_select_and_describe.return_value = [{"recipe_id": r.id, "description": "x"} for r in embedded]
+
+        self.client.post(reverse("submit-query"), {"prompt": "anything"})
+
+        candidate_ids = {c["recipe_id"] for c in mock_select_and_describe.call_args.args[1]}
+        self.assertNotIn(pending.id, candidate_ids)
+        self.assertEqual(QueryRequest.objects.get(user=self.user).status, QueryRequest.Status.DONE)
+
     @patch("queries.tasks.time.sleep")
     @patch("queries.services.generation.select_and_describe")
     @patch("queries.services.retrieval.embed_query")
@@ -159,6 +174,27 @@ class QueryFlowTests(TestCase):
         self.assertIn("openai/claude unavailable", query_request.error_message)
         self.assertEqual(mock_select_and_describe.call_count, settings.QUERY_TASK_MAX_RETRIES + 1)
         self.assertEqual(mock_sleep.call_count, settings.QUERY_TASK_MAX_RETRIES)
+
+    @patch("queries.tasks.time.sleep")
+    @patch("queries.services.generation.select_and_describe")
+    @patch("queries.services.retrieval.embed_query")
+    def test_failed_query_is_logged_with_its_id_and_cause(self, mock_embed_query, mock_select_and_describe, _sleep):
+        self.client.force_login(self.user)
+        _make_recipe()
+        mock_embed_query.return_value = _embedding(0.0)
+        mock_select_and_describe.side_effect = RuntimeError("API key is invalid")
+
+        with self.assertLogs("queries.tasks", level="WARNING") as logs:
+            self.client.post(reverse("submit-query"), {"prompt": "anything"})
+
+        query_request = QueryRequest.objects.get(user=self.user)
+        retries = [r for r in logs.records if r.levelname == "WARNING"]
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(retries), settings.QUERY_TASK_MAX_RETRIES)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].query_request_id, query_request.id)  # type: ignore[attr-defined]
+        assert errors[0].exc_info is not None
+        self.assertIn("API key is invalid", str(errors[0].exc_info[1]))
 
     @patch("queries.services.generation.select_and_describe")
     @patch("queries.services.retrieval.embed_query")

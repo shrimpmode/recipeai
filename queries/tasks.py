@@ -1,3 +1,4 @@
+import logging
 import time
 
 from celery import shared_task
@@ -7,6 +8,8 @@ from accounts.models import Profile
 from queries.models import QueryRequest
 from queries.services import generation, retrieval
 from recipes.models import Recipe
+
+logger = logging.getLogger(__name__)
 
 RETRY_BACKOFF_SECONDS = 2
 
@@ -64,6 +67,10 @@ def _resolve_once(query_request: QueryRequest) -> list[dict]:
     for selection in selections[: settings.RESULT_COUNT]:
         recipe = candidates_by_id.get(selection["recipe_id"])
         if recipe is None:
+            logger.warning(
+                "selection_outside_candidates",
+                extra={"query_request_id": query_request.id, "recipe_id": selection["recipe_id"]},
+            )
             continue
         results.append(_serialize_result(recipe, selection["description"]))
 
@@ -91,21 +98,44 @@ def resolve_query(query_request_id: int):
     query_request.status = QueryRequest.Status.RUNNING
     query_request.save(update_fields=["status", "updated_at"])
 
+    log_context = {"query_request_id": query_request_id}
+    logger.info("query_resolution_started", extra=log_context)
+    started = time.monotonic()
+
     last_exc: Exception | None = None
     for attempt in range(settings.QUERY_TASK_MAX_RETRIES + 1):
         try:
             results = _resolve_once(query_request)
-        except Exception as exc:  # noqa: BLE001 - any failure here should retry, then error out
+        except Exception as exc:
             last_exc = exc
             if attempt < settings.QUERY_TASK_MAX_RETRIES:
-                time.sleep(RETRY_BACKOFF_SECONDS * (2**attempt))
+                delay = RETRY_BACKOFF_SECONDS * (2**attempt)
+                logger.warning(
+                    "query_attempt_failed",
+                    exc_info=True,
+                    extra=log_context | {"attempt": attempt + 1, "retry_in_s": delay},
+                )
+                time.sleep(delay)
             continue
         else:
             query_request.results = results
             query_request.status = QueryRequest.Status.DONE
             query_request.save(update_fields=["results", "status", "updated_at"])
+            logger.info(
+                "query_resolution_succeeded",
+                extra=log_context | {"attempts": attempt + 1, "duration_ms": _elapsed_ms(started)},
+            )
             return
 
     query_request.status = QueryRequest.Status.ERROR
     query_request.error_message = str(last_exc)
     query_request.save(update_fields=["status", "error_message", "updated_at"])
+    logger.error(
+        "query_resolution_failed",
+        exc_info=last_exc,
+        extra=log_context | {"attempts": settings.QUERY_TASK_MAX_RETRIES + 1, "duration_ms": _elapsed_ms(started)},
+    )
+
+
+def _elapsed_ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
