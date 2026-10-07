@@ -64,6 +64,10 @@ docker compose run --rm worker python manage.py migrate                   # HNSW
 
 Then visit http://localhost:8000/, log in, set nutrition goals under "Profile", and submit a query.
 
+### Engineering manual
+
+Architecture, schema, vector search and operations: <http://localhost:8000/docs/> (staff users only; create one with `createsuperuser`). Source: `templates/docs/manual.html`.
+
 ### Local development
 
 Dependencies are managed with [uv](https://docs.astral.sh/uv/) (`pyproject.toml` + `uv.lock`). `uv sync` creates `.venv` with the app and dev tools.

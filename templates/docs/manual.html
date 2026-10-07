@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nutrition RAG Manual</title>
+<meta name="description" content="Architecture, database schema, vector search and operations for the Nutrition Goal RAG project.">
+<style>
+  /* Self-contained on purpose: no CDN, so the manual opens offline from a checkout. */
+  :root {
+    --paper: #fbfaf7;
+    --surface: #ffffff;
+    --sunken: #f3f1ec;
+    --ink: #1d232b;
+    --ink-soft: #545c66;
+    --ink-faint: #8a919a;
+    --rule: #e6e2da;
+    --accent: #0f766e;
+    --accent-soft: #ddefec;
+    --amber: #b45309;
+    --amber-soft: #fbeedd;
+    --rose: #be123c;
+    --rose-soft: #fbe4e9;
+    --indigo: #4338ca;
+    --indigo-soft: #e6e5fa;
+    --code-bg: #f3f1ec;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14171b; --surface: #1b1f24; --sunken: #20252b;
+      --ink: #e7e5e0; --ink-soft: #a9afb7; --ink-faint: #737a83; --rule: #2c3238;
+      --accent: #2dd4bf; --accent-soft: #123532; --amber: #f59e0b; --amber-soft: #352710;
+      --rose: #fb7185; --rose-soft: #3a1820; --indigo: #a5b4fc; --indigo-soft: #23244a;
+      --code-bg: #20252b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14171b; --surface: #1b1f24; --sunken: #20252b;
+    --ink: #e7e5e0; --ink-soft: #a9afb7; --ink-faint: #737a83; --rule: #2c3238;
+    --accent: #2dd4bf; --accent-soft: #123532; --amber: #f59e0b; --amber-soft: #352710;
+    --rose: #fb7185; --rose-soft: #3a1820; --indigo: #a5b4fc; --indigo-soft: #23244a;
+    --code-bg: #20252b;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 40px 24px 40px 28px; border-right: 1px solid var(--rule);
+  }
+  .brand { font: 600 15px/1.3 var(--sans); letter-spacing: .02em; margin-bottom: 4px; }
+  .brand-sub { color: var(--ink-faint); font-size: 13px; margin-bottom: 28px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a {
+    display: block; padding: 5px 10px; border-radius: 6px; color: var(--ink-soft); font-size: 14px;
+  }
+  nav.toc a:hover { background: var(--sunken); color: var(--ink); text-decoration: none; }
+  nav.toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  nav.toc .sub a { padding-left: 22px; font-size: 13px; }
+  .theme-toggle {
+    margin-top: 28px; font: 13px var(--sans); color: var(--ink-soft); background: none;
+    border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px; cursor: pointer;
+  }
+
+  main { padding: 56px 56px 120px; min-width: 0; }
+  header.hero { margin-bottom: 56px; }
+  .eyebrow { font: 600 12px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  h1 { font: 500 44px/1.15 var(--serif); margin: 10px 0 14px; letter-spacing: -.01em; }
+  .lede { font-size: 18px; color: var(--ink-soft); max-width: 680px; margin: 0; }
+  .meta { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+  section { padding-top: 24px; margin-bottom: 64px; }
+  h2 {
+    font: 500 30px/1.2 var(--serif); margin: 0 0 6px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h2 .num { color: var(--ink-faint); font: 500 15px var(--mono); margin-right: 12px; vertical-align: 4px; }
+  h3 { font: 600 18px/1.35 var(--sans); margin: 36px 0 8px; }
+  h4 { font: 600 13px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin: 24px 0 8px; }
+  p { margin: 0 0 14px; max-width: 760px; }
+  ul, ol { max-width: 760px; padding-left: 22px; }
+  li { margin: 4px 0; }
+  strong { font-weight: 600; }
+
+  code { font: 13.5px var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre {
+    font: 13px/1.6 var(--mono); background: var(--code-bg); border-radius: 8px; padding: 16px 18px;
+    overflow-x: auto; margin: 0 0 18px; border-left: 3px solid var(--accent);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .c { color: var(--ink-faint); }
+  .k { color: var(--indigo); }
+  .s { color: var(--amber); }
+
+  .pill {
+    display: inline-block; font: 600 12px var(--sans); padding: 3px 10px; border-radius: 999px;
+    background: var(--sunken); color: var(--ink-soft);
+  }
+  .pill.teal { background: var(--accent-soft); color: var(--accent); }
+  .pill.amber { background: var(--amber-soft); color: var(--amber); }
+  .pill.rose { background: var(--rose-soft); color: var(--rose); }
+  .pill.indigo { background: var(--indigo-soft); color: var(--indigo); }
+
+  .figure {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 24px; margin: 20px 0 28px; overflow-x: auto;
+  }
+  .figure svg { display: block; width: 100%; min-width: 640px; height: auto; }
+  .caption { font-size: 13px; color: var(--ink-faint); margin-top: 12px; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 20px 0 28px; }
+  .stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; }
+  .stat .v { font: 500 26px/1.1 var(--serif); }
+  .stat .l { font-size: 12.5px; color: var(--ink-faint); margin-top: 4px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0 26px; }
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; }
+  .card h5 { margin: 0 0 6px; font: 600 15px var(--sans); }
+  .card p { font-size: 14px; color: var(--ink-soft); margin: 0; }
+  .card .tag { margin-bottom: 10px; }
+
+  .table-wrap { overflow-x: auto; margin: 12px 0 26px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); background: var(--sunken); }
+  tr:last-child td { border-bottom: 0; }
+  td code { font-size: 12.5px; white-space: nowrap; }
+  td.type { font: 12.5px var(--mono); color: var(--indigo); white-space: nowrap; }
+
+  .schema-table { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); margin: 16px 0 26px; overflow: hidden; }
+  .schema-head {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between;
+    padding: 14px 18px; background: var(--sunken); border-bottom: 1px solid var(--rule);
+  }
+  .schema-head .name { font: 600 15px var(--mono); }
+  .schema-head .model { font-size: 13px; color: var(--ink-faint); }
+  .schema-table p.note { font-size: 14px; color: var(--ink-soft); padding: 12px 18px 0; margin: 0; }
+  .schema-table .table-wrap { border: 0; border-radius: 0; margin: 0; }
+
+  .callout { border-radius: 10px; padding: 14px 18px; margin: 18px 0 24px; font-size: 14.5px; max-width: 800px; }
+  .callout p { margin: 0; }
+  .callout strong:first-child { display: block; margin-bottom: 2px; }
+  .callout.info { background: var(--accent-soft); }
+  .callout.warn { background: var(--amber-soft); }
+  .callout.danger { background: var(--rose-soft); }
+
+  .steps { list-style: none; padding: 0; counter-reset: step; max-width: 800px; }
+  .steps > li { counter-increment: step; position: relative; padding: 0 0 18px 44px; margin: 0; }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font: 600 13px/28px var(--sans); text-align: center;
+  }
+  .steps > li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 4px; width: 1px; background: var(--rule); }
+  .steps > li:last-child::after { display: none; }
+  .steps .where { font: 12.5px var(--mono); color: var(--ink-faint); }
+
+  /* SVG diagram tokens */
+  .d-box { fill: var(--surface); stroke: var(--ink-soft); stroke-width: 1.2; }
+  .d-box.accent { fill: var(--accent-soft); stroke: var(--accent); }
+  .d-box.amber { fill: var(--amber-soft); stroke: var(--amber); }
+  .d-box.indigo { fill: var(--indigo-soft); stroke: var(--indigo); }
+  .d-box.ext { fill: var(--sunken); stroke: var(--ink-faint); stroke-dasharray: 5 4; }
+  .d-zone { fill: none; stroke: var(--rule); stroke-width: 1.2; stroke-dasharray: 3 4; }
+  .d-t { fill: var(--ink); font: 600 13px var(--sans); }
+  .d-s { fill: var(--ink-soft); font: 11.5px var(--sans); }
+  .d-m { fill: var(--ink-soft); font: 11px var(--mono); }
+  .d-z { fill: var(--ink-faint); font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; }
+  .d-line { stroke: var(--ink-soft); stroke-width: 1.3; fill: none; }
+  .d-line.accent { stroke: var(--accent); }
+  .d-line.dotted { stroke-dasharray: 2 4; }
+  .d-arrow { fill: var(--ink-soft); }
+  .d-arrow.accent { fill: var(--accent); }
+  .d-dot { fill: var(--accent); }
+
+  footer { color: var(--ink-faint); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 20px; }
+
+  @media (max-width: 900px) {
+    .layout { display: block; }
+    nav.toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 24px 16px; }
+    nav.toc ol { columns: 2; column-gap: 16px; }
+    nav.toc .sub { display: none; }
+    main { padding: 36px 16px 80px; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 25px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="Contents">
+  <div class="brand">Nutrition Goal RAG</div>
+  <div class="brand-sub">Engineering manual</div>
+  <ol>
+    <li><a href="#overview">1 · Overview</a></li>
+    <li><a href="#architecture">2 · Architecture</a></li>
+    <li class="sub"><a href="#runtime">Runtime topology</a></li>
+    <li class="sub"><a href="#request-flow">Request lifecycle</a></li>
+    <li class="sub"><a href="#modules">Module map</a></li>
+    <li><a href="#schema">3 · Schema</a></li>
+    <li class="sub"><a href="#er">Entity relationships</a></li>
+    <li class="sub"><a href="#tables">Tables</a></li>
+    <li class="sub"><a href="#migrations">Migrations</a></li>
+    <li><a href="#vector">4 · Vector database</a></li>
+    <li class="sub"><a href="#vector-why">Why pgvector</a></li>
+    <li class="sub"><a href="#vector-text">What gets embedded</a></li>
+    <li class="sub"><a href="#vector-index">HNSW index</a></li>
+    <li class="sub"><a href="#vector-query">Query path</a></li>
+    <li class="sub"><a href="#vector-lifecycle">Embedding lifecycle</a></li>
+    <li class="sub"><a href="#vector-scale">Scaling notes</a></li>
+    <li><a href="#pipeline">5 · Ingestion pipeline</a></li>
+    <li><a href="#operations">6 · Operations</a></li>
+    <li><a href="#development">7 · Development</a></li>
+    <li><a href="#glossary">8 · Glossary</a></li>
+  </ol>
+  <button class="theme-toggle" id="theme-toggle" type="button">Toggle theme</button>
+</nav>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Engineering manual</div>
+  <h1>Nutrition Goal RAG</h1>
+  <p class="lede">
+    How this project turns a sentence like <em>“something high in fibre for lunch”</em> into three recipes that also suit
+    the user's nutrition goals. Covers the architecture, the database schema, the pgvector search layer and how to run it.
+  </p>
+  <div class="meta">
+    <span class="pill teal">Django 5.1</span>
+    <span class="pill indigo">Postgres 16 + pgvector 0.8</span>
+    <span class="pill amber">Celery + Redis</span>
+    <span class="pill">all-MiniLM-L6-v2 · 384d</span>
+    <span class="pill rose">Claude Haiku 4.5</span>
+  </div>
+</header>
+
+<!-- ───────────────────────────── 1 · Overview ───────────────────────────── -->
+<section id="overview">
+  <h2><span class="num">01</span>Overview</h2>
+  <p>
+    The app is a small retrieval-augmented generation (RAG) system over a catalogue of recipes with nutrition data.
+    A logged-in user types a request in plain language. The app then works in three stages:
+  </p>
+  <ol>
+    <li><strong>Retrieve.</strong> It embeds the request with a local sentence-transformers model and pulls the 15 nearest recipes from Postgres using pgvector.</li>
+    <li><strong>Re-rank.</strong> If the user has set daily nutrition goals, it narrows those 15 down to the 5 whose per-serving nutrition best fits one meal's share of the day.</li>
+    <li><strong>Generate.</strong> It asks Claude to pick the best 3 of the shortlist and write a one- or two-sentence reason for each.</li>
+  </ol>
+  <p>
+    Claude can only choose from recipes the database returned. Any recipe ID outside the shortlist is discarded, so the
+    model cannot invent a recipe.
+  </p>
+
+  <div class="stats">
+    <div class="stat"><div class="v">38,242</div><div class="l">recipes in the corpus</div></div>
+    <div class="stat"><div class="v">384</div><div class="l">embedding dimensions</div></div>
+    <div class="stat"><div class="v">~1.9 ms</div><div class="l">kNN query via HNSW</div></div>
+    <div class="stat"><div class="v">0.997</div><div class="l">recall@15 vs exact scan</div></div>
+    <div class="stat"><div class="v">15 → 5 → 3</div><div class="l">candidates → reranked → results</div></div>
+  </div>
+  <p class="caption">Figures measured on the dev stack after the first full load (see <a href="#pipeline">§5</a>).</p>
+</section>
+
+<!-- ───────────────────────────── 2 · Architecture ───────────────────────────── -->
+<section id="architecture">
+  <h2><span class="num">02</span>Architecture</h2>
+
+  <h3 id="runtime">Runtime topology</h3>
+  <p>
+    There are two processes, <code>web</code> and <code>worker</code>, and both run the same image and the same Django
+    project. Neither keeps state of its own: everything persistent lives in Postgres, and Redis only carries the task
+    queue. The web process never calls the embedding model or Claude. It records the request, puts a task on the
+    queue and returns, so a slow LLM call cannot hold up a web worker.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 900 430" role="img" aria-label="Runtime topology diagram">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="d-arrow" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+        <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="d-arrow accent" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <rect class="d-zone" x="215" y="14" width="690" height="250" rx="12" transform="translate(-5,0)"/>
+      <text class="d-z" x="222" y="32">docker compose</text>
+
+      <!-- Request path -->
+      <rect class="d-box" x="20" y="50" width="150" height="62" rx="8"/>
+      <text class="d-t" x="95" y="77" text-anchor="middle">Browser</text>
+      <text class="d-s" x="95" y="95" text-anchor="middle">HTMX · polls status</text>
+
+      <rect class="d-box accent" x="240" y="50" width="170" height="62" rx="8"/>
+      <text class="d-t" x="325" y="77" text-anchor="middle">web</text>
+      <text class="d-s" x="325" y="95" text-anchor="middle">Django · views</text>
+
+      <rect class="d-box amber" x="480" y="50" width="150" height="62" rx="8"/>
+      <text class="d-t" x="555" y="77" text-anchor="middle">Redis 7</text>
+      <text class="d-s" x="555" y="95" text-anchor="middle">Celery broker</text>
+
+      <rect class="d-box accent" x="720" y="50" width="160" height="62" rx="8"/>
+      <text class="d-t" x="800" y="77" text-anchor="middle">worker</text>
+      <text class="d-s" x="800" y="95" text-anchor="middle">Celery · resolve_query</text>
+
+      <rect class="d-box" x="600" y="180" width="140" height="58" rx="8"/>
+      <text class="d-t" x="670" y="205" text-anchor="middle">Embedding model</text>
+      <text class="d-s" x="670" y="222" text-anchor="middle">MiniLM · in-process</text>
+
+      <rect class="d-box ext" x="760" y="180" width="130" height="58" rx="8"/>
+      <text class="d-t" x="825" y="205" text-anchor="middle">Claude API</text>
+      <text class="d-s" x="825" y="222" text-anchor="middle">Haiku 4.5</text>
+
+      <rect class="d-box indigo" x="240" y="180" width="170" height="70" rx="8"/>
+      <text class="d-t" x="325" y="208" text-anchor="middle">Postgres 16</text>
+      <text class="d-s" x="325" y="226" text-anchor="middle">+ pgvector · HNSW</text>
+
+      <!-- Batch path -->
+      <rect class="d-box" x="20" y="300" width="170" height="70" rx="8"/>
+      <text class="d-t" x="105" y="326" text-anchor="middle">manage.py</text>
+      <text class="d-m" x="105" y="344" text-anchor="middle">load_corpus</text>
+      <text class="d-m" x="105" y="359" text-anchor="middle">backfill_embeddings</text>
+
+      <rect class="d-box ext" x="240" y="310" width="170" height="54" rx="8"/>
+      <text class="d-t" x="325" y="333" text-anchor="middle">Hugging Face Hub</text>
+      <text class="d-s" x="325" y="350" text-anchor="middle">pinned Parquet</text>
+
+      <!-- edges -->
+      <line class="d-line" x1="170" y1="81" x2="238" y2="81" marker-end="url(#ah)"/>
+      <text class="d-s" x="204" y="72" text-anchor="middle">HTTP</text>
+
+      <line class="d-line" x1="410" y1="81" x2="478" y2="81" marker-end="url(#ah)"/>
+      <text class="d-s" x="444" y="72" text-anchor="middle">.delay()</text>
+
+      <line class="d-line" x1="630" y1="81" x2="718" y2="81" marker-end="url(#ah)"/>
+      <text class="d-s" x="674" y="72" text-anchor="middle">task</text>
+
+      <line class="d-line" x1="325" y1="112" x2="325" y2="178" marker-end="url(#ah)"/>
+      <text class="d-s" x="333" y="150">QueryRequest</text>
+
+      <line class="d-line accent" x1="740" y1="112" x2="688" y2="178" marker-end="url(#ah-a)"/>
+      <line class="d-line accent" x1="830" y1="112" x2="828" y2="178" marker-end="url(#ah-a)"/>
+      <line class="d-line accent" x1="726" y1="112" x2="412" y2="206" marker-end="url(#ah-a)"/>
+      <text class="d-s" x="520" y="150" text-anchor="middle" transform="rotate(-16 520 150)">kNN + results</text>
+
+      <line class="d-line" x1="190" y1="320" x2="258" y2="248" marker-end="url(#ah)"/>
+      <text class="d-s" x="20" y="290">COPY · merge · embed ↗</text>
+      <line class="d-line" x1="240" y1="337" x2="192" y2="337" marker-end="url(#ah)"/>
+
+      <text class="d-z" x="20" y="410">Offline batch path</text>
+      <text class="d-z" x="600" y="290">Online request path</text>
+    </svg>
+    <div class="caption">
+      Solid boxes are services we run. Dashed boxes are third parties: the Hugging Face Hub is used only by the batch
+      commands, and the Claude API only by the worker. Teal edges are the worker's calls while it resolves one query.
+    </div>
+  </div>
+
+  <h3 id="request-flow">Request lifecycle</h3>
+  <ol class="steps">
+    <li>
+      <strong>Submit.</strong> <code>POST /</code> creates a <code>QueryRequest</code> (status <code>pending</code>),
+      calls <code>resolve_query.delay(id)</code> and returns a small HTMX fragment that polls for the result.
+      <div class="where">queries/views.py · submit_query</div>
+    </li>
+    <li>
+      <strong>Pick up.</strong> The worker marks the request <code>running</code> and logs <code>query_resolution_started</code>
+      with its <code>query_request_id</code>, which then appears on every log line for this request.
+      <div class="where">queries/tasks.py · resolve_query</div>
+    </li>
+    <li>
+      <strong>Embed the prompt.</strong> The worker turns the prompt into a 384-dimension vector, in-process, with no network call.
+      <div class="where">recipes/services/embeddings.py · embed_query</div>
+    </li>
+    <li>
+      <strong>Retrieve.</strong> It fetches the 15 recipes nearest to the prompt by cosine distance, skipping recipes that have no embedding yet. The HNSW index serves this query.
+      <div class="where">queries/services/retrieval.py · retrieve_by_similarity</div>
+    </li>
+    <li>
+      <strong>Re-rank (only if the user has goals).</strong> Each daily target is divided by 3 to get one meal's share. Each
+      candidate gets the mean relative deviation from those targets, and the 5 closest are kept. Without goals, the top 5 by
+      similarity are kept.
+      <div class="where">queries/services/retrieval.py · rerank_by_goals</div>
+    </li>
+    <li>
+      <strong>Generate.</strong> The worker sends the shortlist to Claude as JSON and gets back
+      <code>[{recipe_id, description}]</code>. Any ID that was not in the shortlist is dropped and logged
+      (<code>selection_outside_candidates</code>).
+      <div class="where">queries/services/generation.py · select_and_describe</div>
+    </li>
+    <li>
+      <strong>Persist or retry.</strong> On success, the worker writes exactly 3 results to <code>QueryRequest.results</code> and sets
+      status <code>done</code>. On failure, it retries up to <code>QUERY_TASK_MAX_RETRIES</code> times, waiting 2 s, then 4 s, then 8 s,
+      before setting status <code>error</code>.
+      <div class="where">queries/tasks.py</div>
+    </li>
+    <li>
+      <strong>Poll.</strong> <code>GET /queries/&lt;id&gt;/status/</code> returns the results, the error message, or
+      another polling fragment. It is scoped to the owner, so asking for another user's request returns 404.
+      <div class="where">queries/views.py · query_status</div>
+    </li>
+  </ol>
+
+  <div class="callout warn">
+    <p><strong>Known gap: every error is retried.</strong>
+    The retry loop treats every exception as transient, so a revoked API key (401) still waits through all its backoff
+    delays before failing. The planned fix is to fail permanent errors (400, 401, 403) on the first attempt and keep
+    retrying timeouts, 429s and 5xx responses.</p>
+  </div>
+
+  <h3 id="modules">Module map</h3>
+  <p>
+    The code is three Django apps. Code that talks to the outside world (the embedding model, Claude, the Hugging Face Hub)
+    sits in small adapter modules at the edges. Tests replace those modules and leave the logic inside them untouched.
+  </p>
+  <div class="cards">
+    <div class="card">
+      <div class="tag"><span class="pill teal">recipes</span></div>
+      <h5>Corpus &amp; vectors</h5>
+      <p><code>Recipe</code> and <code>IngestionRun</code> models; <code>corpus_load</code> (staging + merge),
+      <code>embedding_backfill</code> (resumable, takes an <code>Embedder</code> protocol), <code>dataset</code>
+      (source pinning, parsing, embedding text), <code>embeddings</code> (local model adapter).</p>
+    </div>
+    <div class="card">
+      <div class="tag"><span class="pill amber">queries</span></div>
+      <h5>Search pipeline</h5>
+      <p><code>QueryRequest</code>; the <code>resolve_query</code> Celery task; <code>retrieval</code> (kNN + goal
+      re-rank, pure apart from one ORM query); <code>generation</code> (Claude adapter, the seam the tests mock).</p>
+    </div>
+    <div class="card">
+      <div class="tag"><span class="pill indigo">accounts</span></div>
+      <h5>Users &amp; goals</h5>
+      <p><code>Profile</code> holds optional daily targets for calories, protein, carbs, fat and fibre.
+      <code>has_goals()</code> decides whether re-ranking runs.</p>
+    </div>
+    <div class="card">
+      <div class="tag"><span class="pill">config</span></div>
+      <h5>Wiring</h5>
+      <p>Settings come from the environment and are checked at startup (an invalid <code>LOG_LEVEL</code> stops the app from starting). Also here: the Celery app,
+      URL routing and <code>KeyValueFormatter</code> for structured logs.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 3 · Schema ───────────────────────────── -->
+<section id="schema">
+  <h2><span class="num">03</span>Schema</h2>
+  <p>
+    Postgres is the single source of truth. Recipes, their vectors, load history and user requests all live in one
+    database, so a recipe and its embedding are always updated in the same transaction.
+  </p>
+
+  <h3 id="er">Entity relationships</h3>
+  <div class="figure">
+    <svg viewBox="0 0 900 280" role="img" aria-label="Entity relationship diagram">
+      <defs>
+        <marker id="er-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="d-arrow" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <rect class="d-box" x="20" y="30" width="180" height="48" rx="8"/>
+      <text class="d-t" x="110" y="52" text-anchor="middle">auth_user</text>
+      <text class="d-s" x="110" y="68" text-anchor="middle">Django built-in</text>
+
+      <rect class="d-box indigo" x="20" y="190" width="180" height="48" rx="8"/>
+      <text class="d-t" x="110" y="212" text-anchor="middle">accounts_profile</text>
+      <text class="d-s" x="110" y="228" text-anchor="middle">nutrition goals</text>
+
+      <rect class="d-box amber" x="250" y="190" width="200" height="48" rx="8"/>
+      <text class="d-t" x="350" y="212" text-anchor="middle">queries_queryrequest</text>
+      <text class="d-s" x="350" y="228" text-anchor="middle">prompt · status · results</text>
+
+      <rect class="d-box accent" x="490" y="30" width="190" height="48" rx="8"/>
+      <text class="d-t" x="585" y="52" text-anchor="middle">recipes_recipe</text>
+      <text class="d-s" x="585" y="68" text-anchor="middle">nutrition + embedding</text>
+
+      <rect class="d-box" x="720" y="110" width="170" height="48" rx="8"/>
+      <text class="d-t" x="805" y="132" text-anchor="middle">recipes_ingestionrun</text>
+      <text class="d-s" x="805" y="148" text-anchor="middle">one per load</text>
+
+      <rect class="d-box" x="720" y="214" width="170" height="48" rx="8"/>
+      <text class="d-t" x="805" y="236" text-anchor="middle">ingestion_reject</text>
+      <text class="d-s" x="805" y="252" text-anchor="middle">raw SQL table</text>
+
+      <rect class="d-box ext" x="490" y="190" width="190" height="48" rx="8"/>
+      <text class="d-t" x="585" y="212" text-anchor="middle">recipe_staging</text>
+      <text class="d-s" x="585" y="228" text-anchor="middle">UNLOGGED · transient</text>
+
+      <line class="d-line" x1="110" y1="78" x2="110" y2="188" marker-end="url(#er-ah)"/>
+      <text class="d-m" x="118" y="138">1 : 0..1</text>
+
+      <line class="d-line" x1="180" y1="78" x2="330" y2="188" marker-end="url(#er-ah)"/>
+      <text class="d-m" x="262" y="125">1 : n</text>
+
+      <line class="d-line" x1="680" y1="60" x2="760" y2="108" marker-end="url(#er-ah)"/>
+      <text class="d-m" x="700" y="64">last_seen_run</text>
+
+      <line class="d-line" x1="805" y1="158" x2="805" y2="212" marker-end="url(#er-ah)"/>
+      <text class="d-m" x="797" y="190" text-anchor="end">1 : n · cascade</text>
+
+      <line class="d-line dotted" x1="680" y1="205" x2="718" y2="148" marker-end="url(#er-ah)"/>
+
+      <line class="d-line dotted" x1="430" y1="188" x2="520" y2="80" marker-end="url(#er-ah)"/>
+      <text class="d-m" x="398" y="122">results[].recipe_id</text>
+    </svg>
+    <div class="caption">
+      Solid arrows are foreign keys. Dotted arrows are references the database does not enforce:
+      <code>QueryRequest.results</code> is a frozen JSON snapshot of the recipes shown, and
+      <code>recipe_staging.run_id</code> has no FK so loads stay fast.
+    </div>
+  </div>
+
+  <h3 id="tables">Tables</h3>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">recipes_recipe</span><span class="model">recipes.models.Recipe</span></div>
+    <p class="note">One row per distinct recipe. Nutrition is stored <strong>per serving</strong>: the source has
+    whole-recipe totals, which ingestion divides by <code>servings</code>.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td class="type">bigserial PK</td><td>Keyset cursor for the embedding backfill.</td></tr>
+        <tr><td><code>recipe_name</code></td><td class="type">varchar(500)</td><td>Unique together with <code>source_url</code>. Loads keep the first source row for each name.</td></tr>
+        <tr><td><code>source_url</code></td><td class="type">varchar(1000)</td><td>May be blank.</td></tr>
+        <tr><td><code>image_url</code></td><td class="type">varchar(1000) null</td><td>Set to NULL rather than rejecting the row when the source URL is too long. <code>TODO(schema)</code>: this column can be both NULL and "".</td></tr>
+        <tr><td><code>servings</code></td><td class="type">float8</td><td>Always &gt; 0; rows without this are rejected at validation.</td></tr>
+        <tr><td><code>ingredient_lines</code>, <code>diet_labels</code>, <code>health_labels</code>, <code>cautions</code>, <code>cuisine_type</code>, <code>meal_type</code>, <code>dish_type</code></td><td class="type">jsonb</td><td>Lists of strings. Default <code>[]</code>.</td></tr>
+        <tr><td><code>calories_per_serving</code> … <code>sodium_mg_per_serving</code></td><td class="type">float8 null</td><td>Seven nutrient columns, parsed from the Edamam tags (<code>PROCNT</code>, <code>FAT</code>, <code>CHOCDF</code>, <code>FIBTG</code>, <code>SUGAR</code>, <code>NA</code>).</td></tr>
+        <tr><td><code>embedding</code></td><td class="type">vector(384) null</td><td>NULL until the backfill reaches the row. Retrieval skips NULLs.</td></tr>
+        <tr><td><code>embedding_input_hash</code></td><td class="type">varchar(64)</td><td>sha256 of the text that gets embedded. A load clears the embedding only when this hash changes.</td></tr>
+        <tr><td><code>embedding_model</code></td><td class="type">varchar(100)</td><td>Model that produced the vector. If it isn't the current model, the row is re-embedded.</td></tr>
+        <tr><td><code>embedded_at</code></td><td class="type">timestamptz null</td><td>Set by the backfill.</td></tr>
+        <tr><td><code>last_seen_run_id</code></td><td class="type">FK → ingestionrun, null</td><td><code>ON DELETE SET NULL</code>. The most recent load that included this recipe.</td></tr>
+        <tr><td><code>created_at</code></td><td class="type">timestamptz</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <p>
+    <strong>Constraints &amp; indexes:</strong>
+    <code>unique_recipe_name_source_url (recipe_name, source_url)</code>, which the merge's <code>ON CONFLICT</code> targets, and
+    <code>recipe_embedding_hnsw</code> (HNSW, <code>vector_cosine_ops</code>; see <a href="#vector-index">§4</a>).
+  </p>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">recipes_ingestionrun</span><span class="model">recipes.models.IngestionRun</span></div>
+    <p class="note">One row per <code>load_corpus</code> run, recording where the data came from and what happened to every source row.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>source_repo</code>, <code>source_revision</code>, <code>source_file</code></td><td class="type">varchar</td><td>Hub repo, the pinned commit, and the file path within it.</td></tr>
+        <tr><td><code>file_sha256</code></td><td class="type">varchar(64)</td><td>Hash of the exact bytes that were loaded.</td></tr>
+        <tr><td><code>source_rows</code>, <code>staged_rows</code>, <code>rejected_rows</code></td><td class="type">int</td><td>Must satisfy <code>source = staged + rejected</code>. If not, the run fails with <code>ReconciliationError</code>.</td></tr>
+        <tr><td><code>inserted_rows</code>, <code>updated_rows</code></td><td class="type">int</td><td>Counted with <code>RETURNING (xmax = 0)</code> during the merge.</td></tr>
+        <tr><td><code>status</code></td><td class="type">varchar(10)</td><td><span class="pill">running</span> <span class="pill teal">succeeded</span> <span class="pill rose">failed</span></td></tr>
+        <tr><td><code>error_message</code>, <code>started_at</code>, <code>finished_at</code></td><td class="type">text / timestamptz</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">ingestion_reject</span><span class="model">raw SQL · migration 0003</span></div>
+    <p class="note">Rows that failed validation, kept with the reason and the original payload so they can be inspected.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td class="type">bigserial PK</td><td></td></tr>
+        <tr><td><code>run_id</code></td><td class="type">FK → ingestionrun</td><td><code>ON DELETE CASCADE</code>. Indexed.</td></tr>
+        <tr><td><code>row_number</code></td><td class="type">int</td><td>1-based position in the source file.</td></tr>
+        <tr><td><code>reason</code></td><td class="type">text</td><td>For example: <em>missing required columns: calories</em>.</td></tr>
+        <tr><td><code>raw</code></td><td class="type">jsonb</td><td>The source row exactly as read.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">recipe_staging</span><span class="model">raw SQL · UNLOGGED</span></div>
+    <p class="note">The landing table for <code>COPY</code>. It has the same columns as <code>recipes_recipe</code> minus the
+    vector, plus <code>run_id</code> and <code>row_number</code>. It is <code>UNLOGGED</code> because a crash only loses data
+    a re-run would rebuild anyway, and skipping the WAL makes bulk loads much faster. Its rows are deleted at the end of every run.</p>
+  </div>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">accounts_profile</span><span class="model">accounts.models.Profile</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>user_id</code></td><td class="type">FK → auth_user, unique</td><td>One-to-one. <code>ON DELETE CASCADE</code>.</td></tr>
+        <tr><td><code>daily_calorie_target</code>, <code>protein_target_g</code>, <code>carbs_target_g</code>, <code>fat_target_g</code>, <code>fiber_target_g</code></td><td class="type">float8 null</td><td>All optional. Daily targets; re-ranking divides each by 3.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-table">
+    <div class="schema-head"><span class="name">queries_queryrequest</span><span class="model">queries.models.QueryRequest</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>user_id</code></td><td class="type">FK → auth_user</td><td><code>ON DELETE CASCADE</code>.</td></tr>
+        <tr><td><code>prompt</code></td><td class="type">text</td><td></td></tr>
+        <tr><td><code>status</code></td><td class="type">varchar(10)</td><td><span class="pill">pending</span> <span class="pill amber">running</span> <span class="pill teal">done</span> <span class="pill rose">error</span></td></tr>
+        <tr><td><code>results</code></td><td class="type">jsonb null</td><td>Once status is done, this holds exactly <code>RESULT_COUNT</code> recipe snapshots. They are copies, so later corpus reloads do not change past answers.</td></tr>
+        <tr><td><code>error_message</code>, <code>created_at</code>, <code>updated_at</code></td><td class="type">text / timestamptz</td><td></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <h3 id="migrations">Migrations</h3>
+  <p>Schema changes follow <strong>expand → migrate → contract</strong>, so the running app keeps working while a migration is applied.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Migration</th><th>What it does</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>recipes 0001</code></td><td>Initial <code>Recipe</code>, enables the <code>vector</code> extension.</td><td></td></tr>
+      <tr><td><code>recipes 0002</code></td><td>Changes the vector dimension from 512 to 384 (the MiniLM model).</td><td></td></tr>
+      <tr><td><code>recipes 0003</code></td><td><code>IngestionRun</code>; nullable <code>embedding</code>; embedding metadata columns; <code>last_seen_run</code>; staging and reject tables.</td><td>Expand step. Additive only.</td></tr>
+      <tr><td><code>recipes 0004</code></td><td><code>AddIndexConcurrently</code> for HNSW, then <code>ANALYZE</code>.</td><td><code>atomic = False</code>. Does not block writes. Best applied <em>after</em> the backfill, so the index is built once over complete data.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ───────────────────────────── 4 · Vector DB ───────────────────────────── -->
+<section id="vector">
+  <h2><span class="num">04</span>Vector database</h2>
+
+  <h3 id="vector-why">Why pgvector, not a separate vector store</h3>
+  <p>The vectors live in a <code>vector(384)</code> column on <code>recipes_recipe</code>. At this scale, a separate vector database would bring more complexity than benefit:</p>
+  <div class="cards">
+    <div class="card"><h5>One transaction</h5><p>A recipe's text and its vector change together, so there is no second store to keep in sync and nothing to drift.</p></div>
+    <div class="card"><h5>Filters are just SQL</h5><p><code>embedding IS NOT NULL</code> today; dietary or meal-type filters could later be ordinary WHERE clauses next to the kNN ordering.</p></div>
+    <div class="card"><h5>One thing to operate</h5><p>Backups, migrations, monitoring and access control all reuse the Postgres setup we already run.</p></div>
+  </div>
+  <p class="caption">When to revisit: tens of millions of vectors, or an index that no longer fits in RAM. See <a href="#vector-scale">scaling notes</a>.</p>
+
+  <h3 id="vector-text">What gets embedded</h3>
+  <p>
+    Each recipe is turned into one document by <code>dataset.compose_embedding_text</code>. It joins the name, the ingredients,
+    the labels, the meal and dish types, and a summary of the nutrition per serving, separated by <code>". "</code>. Putting the
+    nutrition in the text lets a prompt like “high protein” match on meaning, before any numeric re-ranking.
+  </p>
+<pre><code><span class="c"># Example input to the embedding model</span>
+Overnight Oats. 1 cup rolled oats. 1 cup almond milk. 1 tbsp chia seeds. Balanced. Vegetarian.
+breakfast. cereals. 380 kcal, 14 g protein, 9 g fiber, 55 g carbs, 11 g fat per serving</code></pre>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Property</th><th>Value</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Model</td><td><code>sentence-transformers/all-MiniLM-L6-v2</code></td><td>Small and fast on CPU, with no API key. Queries and documents use the same model.</td></tr>
+      <tr><td>Dimensions</td><td>384 (<code>settings.EMBEDDING_DIMENSIONS</code>)</td><td>Each vector takes about 1.5 KB.</td></tr>
+      <tr><td>Distance</td><td>Cosine (<code>&lt;=&gt;</code>)</td><td>The model is trained for cosine similarity. The index operator class must match.</td></tr>
+      <tr><td>Change detection</td><td><code>embedding_input_hash</code> = sha256(text)</td><td>A reload clears only the vectors whose text actually changed.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="vector-index">HNSW index</h3>
+<pre><code><span class="k">CREATE INDEX CONCURRENTLY</span> recipe_embedding_hnsw
+    <span class="k">ON</span> recipes_recipe <span class="k">USING</span> hnsw (embedding vector_cosine_ops)
+    <span class="k">WITH</span> (m = <span class="s">16</span>, ef_construction = <span class="s">64</span>);</code></pre>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Parameter</th><th>Value</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>m</code></td><td>16</td><td>Links per node in the graph. More links give better recall at the cost of a bigger index and slower builds.</td></tr>
+      <tr><td><code>ef_construction</code></td><td>64</td><td>How widely the build searches for neighbours. Affects build time and index quality, not query time.</td></tr>
+      <tr><td><code>hnsw.ef_search</code></td><td>40 (pgvector default)</td><td>How widely each query searches. It must be at least <code>LIMIT</code>; ours is 15. Can be raised per session.</td></tr>
+      <tr><td>Operator class</td><td><code>vector_cosine_ops</code></td><td>Must match the <code>CosineDistance</code> in the query, or the planner will not use the index.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="stats">
+    <div class="stat"><div class="v">12 s</div><div class="l">build time, 38k rows</div></div>
+    <div class="stat"><div class="v">75 MB</div><div class="l">index size</div></div>
+    <div class="stat"><div class="v">~59 MB</div><div class="l">raw vectors (38k × 1.5 KB)</div></div>
+    <div class="stat"><div class="v">0.997</div><div class="l">recall@15</div></div>
+  </div>
+  <p>
+    <strong>Why HNSW rather than IVFFlat:</strong> HNSW can be built on an empty or growing table and needs no training step.
+    It also gives better recall for the same speed. IVFFlat's lists have to be rebuilt as the data changes, which does not
+    suit a corpus that keeps getting reloaded.
+  </p>
+
+  <h3 id="vector-query">Query path</h3>
+  <p>The ORM call in <code>retrieve_by_similarity</code> compiles to:</p>
+<pre><code><span class="k">SELECT</span> *
+  <span class="k">FROM</span> recipes_recipe
+ <span class="k">WHERE</span> embedding <span class="k">IS NOT NULL</span>
+ <span class="k">ORDER BY</span> embedding &lt;=&gt; <span class="s">$1::vector(384)</span>
+ <span class="k">LIMIT</span> <span class="s">15</span>;</code></pre>
+  <p>Check that the index is used with <code>EXPLAIN</code>. Look for an <code>Index Scan using recipe_embedding_hnsw</code> line:</p>
+<pre><code>docker compose exec db psql -U nutrition -c <span class="s">"EXPLAIN ANALYZE SELECT id FROM recipes_recipe
+  WHERE embedding IS NOT NULL ORDER BY embedding &lt;=&gt; (SELECT embedding FROM recipes_recipe LIMIT 1) LIMIT 15;"</span></code></pre>
+  <div class="callout info">
+    <p><strong>Filtered search with HNSW.</strong>
+    HNSW applies a WHERE clause <em>after</em> it walks the graph, so a selective filter can leave you with fewer than
+    <code>LIMIT</code> rows. Our current filter, <code>IS NOT NULL</code>, is free because NULL vectors are never in the
+    index. If you add selective filters such as <code>health_labels ? 'Vegan'</code>, turn on pgvector 0.8's
+    <code>SET hnsw.iterative_scan = relaxed_order</code>, or raise <code>hnsw.ef_search</code>.</p>
+  </div>
+
+  <h3 id="vector-lifecycle">Embedding lifecycle</h3>
+  <p>The database itself acts as the work queue. A recipe needs embedding when either of these is true:</p>
+<pre><code>embedding <span class="k">IS NULL</span>                    <span class="c">-- new row, or a reload changed its text</span>
+<span class="k">OR</span> embedding_model &lt;&gt; <span class="s">'all-MiniLM-L6-v2'</span>  <span class="c">-- embedded by a different model</span></code></pre>
+  <div class="figure">
+    <svg viewBox="0 0 900 170" role="img" aria-label="Embedding lifecycle state diagram">
+      <defs>
+        <marker id="lc-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="d-arrow" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+      <rect class="d-box" x="20" y="55" width="150" height="56" rx="28"/>
+      <text class="d-t" x="95" y="80" text-anchor="middle">Loaded</text>
+      <text class="d-m" x="95" y="97" text-anchor="middle">embedding NULL</text>
+
+      <rect class="d-box accent" x="370" y="55" width="160" height="56" rx="28"/>
+      <text class="d-t" x="450" y="80" text-anchor="middle">Searchable</text>
+      <text class="d-m" x="450" y="97" text-anchor="middle">vector + model</text>
+
+      <rect class="d-box amber" x="720" y="55" width="160" height="56" rx="28"/>
+      <text class="d-t" x="800" y="80" text-anchor="middle">Stale</text>
+      <text class="d-m" x="800" y="97" text-anchor="middle">model mismatch</text>
+
+      <line class="d-line" x1="170" y1="83" x2="368" y2="83" marker-end="url(#lc-ah)"/>
+      <text class="d-m" x="269" y="74" text-anchor="middle">backfill_embeddings</text>
+
+      <line class="d-line" x1="530" y1="76" x2="718" y2="76" marker-end="url(#lc-ah)"/>
+      <text class="d-m" x="624" y="67" text-anchor="middle">model changed</text>
+      <path class="d-line" d="M720,96 L530,96" marker-end="url(#lc-ah)"/>
+      <text class="d-m" x="624" y="114" text-anchor="middle">backfill_embeddings</text>
+
+      <path class="d-line" d="M450,111 C450,160 95,160 95,113" marker-end="url(#lc-ah)"/>
+      <text class="d-m" x="272" y="150" text-anchor="middle">load_corpus: text hash changed → NULL</text>
+
+      <path class="d-line" d="M410,55 C410,10 490,10 490,53" marker-end="url(#lc-ah)"/>
+      <text class="d-m" x="450" y="16" text-anchor="middle">load_corpus: hash same → kept</text>
+    </svg>
+  </div>
+  <ul>
+    <li><strong>Resumable.</strong> The backfill reads the stale rows in <code>id</code> order with keyset pagination, 512 per batch.
+      It embeds each batch <em>outside</em> any transaction, then commits it with <code>bulk_update</code>. If the run is
+      interrupted, at most one batch is lost, and re-running carries on from where it stopped.</li>
+    <li><strong>Changing the model is the same command.</strong> Point <code>LocalEmbedder.model_id</code> at the new model
+      (and change <code>EMBEDDING_DIMENSIONS</code> and add a migration if the dimension changes), then run
+      <code>backfill_embeddings</code>. Rows that have not been re-embedded yet still answer queries until the run finishes.</li>
+    <li><strong>A query never mixes models.</strong> Today there is one model, so this holds automatically. During a model change, rows from both
+      models sit in the same column. If both models had the same dimension, a query could compare the new query vector against
+      vectors from the old model. If the two models ever share a dimension, also filter retrieval on
+      <code>embedding_model</code>.</li>
+  </ul>
+
+  <h3 id="vector-scale">Scaling notes</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Corpus size</th><th>Vectors (raw)</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td>≈ 40k (today)</td><td>≈ 59 MB</td><td>Nothing. The index fits easily in <code>shared_buffers</code>.</td></tr>
+      <tr><td>≈ 1M</td><td>≈ 1.5 GB</td><td>Raise <code>maintenance_work_mem</code> for index builds (pgvector warns when the graph no longer fits in it). Consider <code>halfvec(384)</code> to halve storage. Run the backfill on a dedicated queue.</td></tr>
+      <tr><td>≈ 10M+</td><td>≈ 15 GB+</td><td>Partition by a coarse filter, use a read replica for search, or move to a dedicated ANN engine. Revisit the decision recorded in ADR 0001.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="caption">These rows above today's size are planning estimates based on 1,544 bytes per vector, not measurements.</p>
+</section>
+
+<!-- ───────────────────────────── 5 · Pipeline ───────────────────────────── -->
+<section id="pipeline">
+  <h2><span class="num">05</span>Ingestion pipeline</h2>
+  <p>
+    The corpus is <a href="https://huggingface.co/datasets/datahiveai/recipes-with-nutrition">datahiveai/recipes-with-nutrition</a>
+    (licence CC BY-NC 4.0). Loading it is a two-stage batch job: <code>load_corpus</code> handles the relational data and takes seconds,
+    then <code>backfill_embeddings</code> handles the vectors and takes about a minute. The full reasoning is in
+    <code>docs/adr/0001-corpus-load-pipeline.md</code>.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 900 150" role="img" aria-label="Ingestion pipeline">
+      <defs>
+        <marker id="pl-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path class="d-arrow" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+      <g>
+        <rect class="d-box ext" x="10" y="40" width="130" height="64" rx="8"/>
+        <text class="d-t" x="75" y="66" text-anchor="middle">Fetch</text>
+        <text class="d-s" x="75" y="84" text-anchor="middle">pinned Parquet</text>
+
+        <rect class="d-box" x="190" y="40" width="130" height="64" rx="8"/>
+        <text class="d-t" x="255" y="66" text-anchor="middle">Validate</text>
+        <text class="d-s" x="255" y="84" text-anchor="middle">per row → reject</text>
+
+        <rect class="d-box amber" x="370" y="40" width="130" height="64" rx="8"/>
+        <text class="d-t" x="435" y="66" text-anchor="middle">COPY</text>
+        <text class="d-s" x="435" y="84" text-anchor="middle">→ recipe_staging</text>
+
+        <rect class="d-box indigo" x="550" y="40" width="130" height="64" rx="8"/>
+        <text class="d-t" x="615" y="66" text-anchor="middle">Merge</text>
+        <text class="d-s" x="615" y="84" text-anchor="middle">INSERT … ON CONFLICT</text>
+
+        <rect class="d-box accent" x="730" y="40" width="160" height="64" rx="8"/>
+        <text class="d-t" x="810" y="66" text-anchor="middle">Backfill</text>
+        <text class="d-s" x="810" y="84" text-anchor="middle">embed stale rows</text>
+
+        <line class="d-line" x1="140" y1="72" x2="188" y2="72" marker-end="url(#pl-ah)"/>
+        <line class="d-line" x1="320" y1="72" x2="368" y2="72" marker-end="url(#pl-ah)"/>
+        <line class="d-line" x1="500" y1="72" x2="548" y2="72" marker-end="url(#pl-ah)"/>
+        <line class="d-line dotted" x1="680" y1="72" x2="728" y2="72" marker-end="url(#pl-ah)"/>
+
+        <text class="d-z" x="10" y="130">load_corpus · one advisory lock · one IngestionRun</text>
+        <text class="d-z" x="730" y="130">backfill_embeddings</text>
+      </g>
+    </svg>
+  </div>
+
+  <ol class="steps">
+    <li><strong>Fetch.</strong> <code>hf_hub_download</code> downloads <code>default/train/0000.parquet</code> at a pinned commit of
+      <code>refs/convert/parquet</code>, about 100 MB compared with 450 MB for the CSV. The file is cached locally, so later runs do not download it again. Change
+      <code>PARQUET_REVISION</code> deliberately: Hugging Face can regenerate that branch.</li>
+    <li><strong>Lock and record.</strong> <code>pg_try_advisory_lock</code> lets only one load run at a time; a second one fails at once with
+      <code>LoadInProgress</code>. Then an <code>IngestionRun</code> row is created with the file's sha256.</li>
+    <li><strong>Validate and stage.</strong> pyarrow reads the file in record batches. Each row is parsed and validated in Python.
+      Valid rows are streamed into the unlogged staging table with <code>COPY</code>, and invalid ones are written to
+      <code>ingestion_reject</code>.</li>
+    <li><strong>Reconcile.</strong> If <code>source_rows ≠ staged + rejected</code>, the run is marked as failed before anything reaches the live table.</li>
+    <li><strong>Merge.</strong> A single set-based statement does the upsert: <code>DISTINCT ON (recipe_name)</code> drops duplicate names,
+      <code>ON CONFLICT</code> updates the data columns, and an existing vector is kept only if its input hash is unchanged.</li>
+    <li><strong>Backfill.</strong> Embeds every stale row, as described in <a href="#vector-lifecycle">§4</a>.</li>
+  </ol>
+
+  <div class="stats">
+    <div class="stat"><div class="v">39,447</div><div class="l">source rows</div></div>
+    <div class="stat"><div class="v">0</div><div class="l">rejected</div></div>
+    <div class="stat"><div class="v">38,242</div><div class="l">distinct recipes</div></div>
+    <div class="stat"><div class="v">~9 s</div><div class="l">load_corpus</div></div>
+    <div class="stat"><div class="v">~67 s</div><div class="l">embedding (CPU)</div></div>
+  </div>
+  <p class="caption">Running either command again changes nothing: the load inserts 0 rows and the backfill embeds 0.</p>
+</section>
+
+<!-- ───────────────────────────── 6 · Operations ───────────────────────────── -->
+<section id="operations">
+  <h2><span class="num">06</span>Operations</h2>
+
+  <h3>Full corpus load (runbook)</h3>
+<pre><code>docker compose exec db pg_dump -U nutrition -Fc nutrition &gt; backup.dump   <span class="c"># before the first load</span>
+docker compose run --rm worker python manage.py migrate recipes 0003      <span class="c"># schema only, no vector index yet</span>
+docker compose run --rm worker python manage.py load_corpus               <span class="c"># fetch → stage (COPY) → merge; seconds</span>
+docker compose run --rm worker python manage.py backfill_embeddings       <span class="c"># slow; Ctrl-C safe, re-run to resume</span>
+docker compose run --rm worker python manage.py migrate                   <span class="c"># HNSW index on embeddings</span></code></pre>
+
+  <h3>Health queries</h3>
+<pre><code><span class="c">-- Recent loads</span>
+<span class="k">SELECT</span> id, status, source_rows, staged_rows, rejected_rows, inserted_rows, updated_rows,
+       finished_at - started_at <span class="k">AS</span> took
+  <span class="k">FROM</span> recipes_ingestionrun <span class="k">ORDER BY</span> id <span class="k">DESC LIMIT</span> 5;
+
+<span class="c">-- Why rows were rejected, by reason</span>
+<span class="k">SELECT</span> reason, count(*) <span class="k">FROM</span> ingestion_reject <span class="k">WHERE</span> run_id = <span class="s">:run</span> <span class="k">GROUP BY</span> 1 <span class="k">ORDER BY</span> 2 <span class="k">DESC</span>;
+
+<span class="c">-- Embedding coverage</span>
+<span class="k">SELECT</span> embedding_model, count(*) <span class="k">FILTER</span> (<span class="k">WHERE</span> embedding <span class="k">IS NULL</span>) <span class="k">AS</span> pending, count(*)
+  <span class="k">FROM</span> recipes_recipe <span class="k">GROUP BY</span> 1;
+
+<span class="c">-- Recipes no longer in the latest source</span>
+<span class="k">SELECT</span> count(*) <span class="k">FROM</span> recipes_recipe
+ <span class="k">WHERE</span> last_seen_run_id <span class="k">IS DISTINCT FROM</span> (<span class="k">SELECT</span> max(id) <span class="k">FROM</span> recipes_ingestionrun <span class="k">WHERE</span> status = <span class="s">'succeeded'</span>);</code></pre>
+
+  <h3>Configuration</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>—</td><td>Required for search. If it is invalid, every query ends in <code>error</code> after its retries.</td></tr>
+      <tr><td><code>POSTGRES_DB / USER / PASSWORD / HOST / PORT</code></td><td>nutrition / … / db / 5432</td><td>Database connection.</td></tr>
+      <tr><td><code>REDIS_URL</code></td><td><code>redis://localhost:6379/0</code></td><td>Celery broker and result backend.</td></tr>
+      <tr><td><code>LOG_LEVEL</code></td><td><code>INFO</code></td><td>Checked at startup; an invalid value stops the app from starting.</td></tr>
+      <tr><td><code>DJANGO_SECRET_KEY</code>, <code>DJANGO_DEBUG</code>, <code>DJANGO_ALLOWED_HOSTS</code></td><td>dev values</td><td>Standard Django settings.</td></tr>
+      <tr><td><code>CELERY_TASK_ALWAYS_EAGER</code></td><td><code>false</code></td><td>Runs tasks inside the web process. For tests and debugging only.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Tuning settings that are fixed in <code>settings.py</code>: <code>RETRIEVAL_CANDIDATE_COUNT=15</code>,
+  <code>RETRIEVAL_RERANKED_COUNT=5</code>, <code>RESULT_COUNT=3</code>, <code>QUERY_TASK_MAX_RETRIES=3</code>.</p>
+
+  <h3>Logs</h3>
+  <p>
+    Logs are one line per event in <code>key=value</code> form. Follow a single request with
+    <code>docker compose logs worker | grep query_request_id=42</code>.
+  </p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Level</th><th>Key fields</th></tr></thead>
+    <tbody>
+      <tr><td><code>query_resolution_started</code></td><td>INFO</td><td><code>query_request_id</code></td></tr>
+      <tr><td><code>claude_selection_completed</code></td><td>INFO</td><td><code>duration_ms</code>, tokens, <code>stop_reason</code>, <code>anthropic_request_id</code></td></tr>
+      <tr><td><code>query_attempt_failed</code></td><td>WARNING</td><td><code>attempt</code>, <code>retry_in_s</code>, traceback</td></tr>
+      <tr><td><code>selection_outside_candidates</code></td><td>WARNING</td><td><code>recipe_id</code></td></tr>
+      <tr><td><code>claude_selection_unparseable</code></td><td>WARNING</td><td><code>response_preview</code> (500 chars)</td></tr>
+      <tr><td><code>query_resolution_succeeded</code></td><td>INFO</td><td><code>attempts</code>, <code>duration_ms</code></td></tr>
+      <tr><td><code>query_resolution_failed</code></td><td>ERROR</td><td><code>attempts</code>, <code>duration_ms</code>, traceback</td></tr>
+      <tr><td><code>embedding_batch_committed</code></td><td>INFO</td><td><code>last_id</code>, <code>embedded</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ───────────────────────────── 7 · Development ───────────────────────────── -->
+<section id="development">
+  <h2><span class="num">07</span>Development</h2>
+<pre><code>uv sync                                   <span class="c"># .venv from uv.lock (torch from the CPU-only index on Linux)</span>
+uv run ruff format .                      <span class="c"># format</span>
+uv run ruff check --fix .                 <span class="c"># lint</span>
+uv run mypy .                             <span class="c"># types: authoritative (Django plugin)</span>
+                                          <span class="c"># pyright (basic) is for editor feedback only</span>
+docker compose up -d db redis
+POSTGRES_HOST=localhost uv run python manage.py migrate
+POSTGRES_HOST=localhost uv run python manage.py test</code></pre>
+  <div class="cards">
+    <div class="card"><h5>Real database in tests</h5><p>Tests run against the real pgvector container: the merge SQL, <code>COPY</code>, the advisory lock and the HNSW index are all tested against Postgres itself.</p></div>
+    <div class="card"><h5>Fakes only at the edges</h5><p>The embedding model is swapped for a <code>FakeEmbedder</code> passed in through the <code>Embedder</code> protocol; the Claude call is patched at <code>generation.select_and_describe</code>.</p></div>
+    <div class="card"><h5>Fixtures are real Parquet</h5><p>Each test writes a small Parquet file with the same column types as the real source, so pyarrow follows the same code path as in production.</p></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 8 · Glossary ───────────────────────────── -->
+<section id="glossary">
+  <h2><span class="num">08</span>Glossary</h2>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><td><strong>Candidate</strong></td><td>One of the 15 recipes returned by kNN, before re-ranking.</td></tr>
+      <tr><td><strong>Shortlist</strong></td><td>The 5 candidates sent to Claude.</td></tr>
+      <tr><td><strong>Result</strong></td><td>One of the 3 recipes Claude chose, saved with its description on the <code>QueryRequest</code>.</td></tr>
+      <tr><td><strong>Ingestion run</strong></td><td>One execution of <code>load_corpus</code>, with its row counts and source.</td></tr>
+      <tr><td><strong>Stale embedding</strong></td><td>A row whose vector is NULL or was produced by a model other than the current one.</td></tr>
+      <tr><td><strong>Embedding input hash</strong></td><td>sha256 of the text sent to the embedding model. If it is unchanged, the stored vector is still valid.</td></tr>
+      <tr><td><strong>Per-meal share</strong></td><td>A daily goal divided by 3. This is what each recipe's per-serving nutrition is compared against.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  Served at <code>/docs/</code> (staff only) from <code>templates/docs/manual.html</code>. Update it in the same PR as any change to the schema, the pipeline or the search path.
+  Design decisions are recorded in <code>docs/adr/</code>.
+</footer>
+
+</main>
+</div>
+
+<script>
+  // Highlight the section in view; purely cosmetic, so failures are ignored.
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll("nav.toc a"));
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+    if (!("IntersectionObserver" in window)) return;
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        links.forEach(function (a) { a.classList.remove("active"); });
+        var link = byId[e.target.id];
+        if (link) link.classList.add("active");
+      });
+    }, { rootMargin: "0px 0px -75% 0px" });
+    Object.keys(byId).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+  })();
+
+  (function () {
+    var root = document.documentElement;
+    try { var saved = localStorage.getItem("manual-theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+    document.getElementById("theme-toggle").addEventListener("click", function () {
+      var dark = root.dataset.theme
+        ? root.dataset.theme === "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("manual-theme", root.dataset.theme); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 import logging
 
-from django.test import SimpleTestCase
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 
 from config.logging import KeyValueFormatter
 
@@ -33,3 +35,27 @@ class KeyValueFormatterTests(SimpleTestCase):
         first_line, traceback = line.split("\n", 1)
         self.assertEqual(first_line, "query_failed query_request_id=21")
         self.assertIn("RuntimeError: boom", traceback)
+
+
+class ManualTests(TestCase):
+    def test_staff_can_read_the_manual(self):
+        self.client.force_login(User.objects.create_user(username="ops", password="pw12345!", is_staff=True))
+
+        response = self.client.get(reverse("manual"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<title>Nutrition RAG Manual</title>")
+
+    def test_non_staff_user_is_sent_to_the_admin_login(self):
+        self.client.force_login(User.objects.create_user(username="alex", password="pw12345!"))
+
+        response = self.client.get(reverse("manual"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("admin:login"), response.headers["Location"])
+
+    def test_anonymous_user_is_sent_to_the_admin_login(self):
+        response = self.client.get(reverse("manual"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("admin:login"), response.headers["Location"])
