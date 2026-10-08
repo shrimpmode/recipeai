@@ -24,7 +24,7 @@ There is also a **keyword search** mode (no AI): a direct, indexed search of rec
 
 ## Stack
 
-Next.js (App Router, TypeScript, Tailwind) · Django + django-ninja (JSON API) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Anthropic Claude Haiku · Playwright · Docker Compose
+Next.js (App Router, TypeScript, Tailwind) · Django + Django REST Framework (JSON API, OpenAPI via drf-spectacular) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Anthropic Claude Haiku · Playwright · Docker Compose
 
 The browser only talks to Next.js; Next.js proxies `/api` to Django, so sessions and CSRF work on one origin. See [ADR 0003](docs/adr/0003-nextjs-frontend-django-api.md).
 

@@ -135,7 +135,7 @@ class KeywordSearchApiTests(TestCase):
         self.client.force_login(self.user)
 
         for q in ("", "   "):
-            self.assertEqual(self._search(q).status_code, 422)
+            self.assertEqual(self._search(q).status_code, 400)
 
 
 NUTRITION_FIELDS = {

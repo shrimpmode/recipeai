@@ -257,5 +257,5 @@ class QueryFlowTests(TestCase):
         self.client.force_login(self.user)
 
         for prompt in ("", "   "):
-            self.assertEqual(self._submit(prompt).status_code, 422)
+            self.assertEqual(self._submit(prompt).status_code, 400)
         self.assertEqual(QueryRequest.objects.count(), 0)

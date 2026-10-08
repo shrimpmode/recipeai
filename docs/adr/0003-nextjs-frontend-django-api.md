@@ -1,6 +1,6 @@
 # 0003 — Next.js frontend over a Django JSON API, one origin via rewrites
 
-Date: 2026-10-07 · Status: accepted
+Date: 2026-10-07 · Status: accepted; API framework superseded by [0004](0004-django-rest-framework-api.md) (django-ninja → Django REST Framework)
 
 ## Context
 

@@ -85,7 +85,7 @@ class GoalsApiTests(TestCase):
     def test_negative_target_is_rejected(self):
         response = self.client.put("/api/profile", {"protein_target_g": -5}, content_type="application/json")
 
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 400)
 
     def test_anonymous_user_is_rejected(self):
         self.client.logout()

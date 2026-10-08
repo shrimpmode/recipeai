@@ -11,11 +11,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Csrf
-         * @description Sets the `csrftoken` cookie; call once before the first unsafe request.
-         */
-        get: operations["accounts_api_csrf"];
+        /** @description Sets the `csrftoken` cookie; call once before the first unsafe request. */
+        get: operations["auth_csrf"];
         put?: never;
         post?: never;
         delete?: never;
@@ -33,8 +30,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login View */
-        post: operations["accounts_api_login_view"];
+        post: operations["auth_login"];
         delete?: never;
         options?: never;
         head?: never;
@@ -50,8 +46,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout View */
-        post: operations["accounts_api_logout_view"];
+        post: operations["auth_logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -65,8 +60,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Me */
-        get: operations["accounts_api_me"];
+        get: operations["auth_me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -82,10 +76,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Goals */
-        get: operations["accounts_api_get_goals"];
-        /** Update Goals */
-        put: operations["accounts_api_update_goals"];
+        get: operations["profile_get_goals"];
+        put: operations["profile_update_goals"];
         post?: never;
         delete?: never;
         options?: never;
@@ -103,11 +95,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit Query
          * @description Queue an AI search; poll `GET /api/queries/{id}` until status is done or error.
          *     The error text is logged server-side, not returned: it can contain provider details.
          */
-        post: operations["queries_api_submit_query"];
+        post: operations["queries_submit_query"];
         delete?: never;
         options?: never;
         head?: never;
@@ -121,8 +112,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Query Status */
-        get: operations["queries_api_query_status"];
+        get: operations["queries_query_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -139,11 +129,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Keyword Search
          * @description Search without AI: synchronous, at most KEYWORD_SEARCH_RESULT_COUNT recipes.
          *     `elapsed_ms` is database search time, measured here.
          */
-        get: operations["recipes_api_keyword_search"];
+        get: operations["recipes_keyword_search"];
         put?: never;
         post?: never;
         delete?: never;
@@ -156,125 +145,109 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** Me */
-        Me: {
-            /** Username */
+        CredentialsRequest: {
             username: string;
-            /** Is Staff */
-            is_staff: boolean;
-        };
-        /** Message */
-        Message: {
-            /** Detail */
-            detail: string;
-        };
-        /** Credentials */
-        Credentials: {
-            /** Username */
-            username: string;
-            /** Password */
             password: string;
         };
-        /** Goals */
+        /** @description PUT replaces every goal: a field left out is cleared (default None). */
         Goals: {
-            /** Daily Calorie Target */
+            /** Format: double */
             daily_calorie_target?: number | null;
-            /** Protein Target G */
+            /** Format: double */
             protein_target_g?: number | null;
-            /** Carbs Target G */
+            /** Format: double */
             carbs_target_g?: number | null;
-            /** Fat Target G */
+            /** Format: double */
             fat_target_g?: number | null;
-            /** Fiber Target G */
+            /** Format: double */
             fiber_target_g?: number | null;
         };
-        /** QueryOut */
+        /** @description PUT replaces every goal: a field left out is cleared (default None). */
+        GoalsRequest: {
+            /** Format: double */
+            daily_calorie_target?: number | null;
+            /** Format: double */
+            protein_target_g?: number | null;
+            /** Format: double */
+            carbs_target_g?: number | null;
+            /** Format: double */
+            fat_target_g?: number | null;
+            /** Format: double */
+            fiber_target_g?: number | null;
+        };
+        Me: {
+            username: string;
+            is_staff: boolean;
+        };
+        Message: {
+            detail: string;
+        };
+        QueryInRequest: {
+            prompt: string;
+        };
         QueryOut: {
-            /** Id */
             id: number;
-            status: components["schemas"]["Status"];
-            /** Results */
+            status: components["schemas"]["QueryStatus"];
             results: components["schemas"]["ResultOut"][] | null;
-            /** Elapsed Seconds */
+            /** Format: double */
             elapsed_seconds: number | null;
         };
         /**
-         * ResultOut
-         * @description One entry of `QueryRequest.results` (see `queries.tasks._serialize_result`).
-         */
-        ResultOut: {
-            /** Recipe Id */
-            recipe_id: number;
-            /** Recipe Name */
-            recipe_name: string;
-            /** Description */
-            description: string;
-            /** Source Url */
-            source_url: string;
-            /** Image Url */
-            image_url: string | null;
-            /** Calories Per Serving */
-            calories_per_serving: number | null;
-            /** Protein G Per Serving */
-            protein_g_per_serving: number | null;
-            /** Carbs G Per Serving */
-            carbs_g_per_serving: number | null;
-            /** Fat G Per Serving */
-            fat_g_per_serving: number | null;
-            /** Fiber G Per Serving */
-            fiber_g_per_serving: number | null;
-            /** Sugar G Per Serving */
-            sugar_g_per_serving: number | null;
-            /** Sodium Mg Per Serving */
-            sodium_mg_per_serving: number | null;
-        };
-        /**
-         * Status
+         * @description * `pending` - Pending
+         *     * `running` - Running
+         *     * `done` - Done
+         *     * `error` - Error
          * @enum {string}
          */
-        Status: "pending" | "running" | "done" | "error";
-        /** QueryIn */
-        QueryIn: {
-            /** Prompt */
-            prompt: string;
-        };
-        /** SearchParams */
-        SearchParams: {
-            /** Q */
-            q: string;
-        };
-        /** RecipeOut */
+        QueryStatus: "pending" | "running" | "done" | "error";
         RecipeOut: {
-            /** Id */
-            id: number;
-            /** Recipe Name */
+            readonly id: number;
+            readonly recipe_name: string;
+            /** Format: uri */
+            readonly source_url: string;
+            /** Format: uri */
+            readonly image_url: string | null;
+            /** Format: double */
+            readonly calories_per_serving: number | null;
+            /** Format: double */
+            readonly protein_g_per_serving: number | null;
+            /** Format: double */
+            readonly carbs_g_per_serving: number | null;
+            /** Format: double */
+            readonly fat_g_per_serving: number | null;
+            /** Format: double */
+            readonly fiber_g_per_serving: number | null;
+            /** Format: double */
+            readonly sugar_g_per_serving: number | null;
+            /** Format: double */
+            readonly sodium_mg_per_serving: number | null;
+        };
+        /** @description One entry of `QueryRequest.results` (see `queries.tasks._serialize_result`). */
+        ResultOut: {
+            recipe_id: number;
             recipe_name: string;
-            /** Source Url */
+            description: string;
             source_url: string;
-            /** Image Url */
             image_url: string | null;
-            /** Calories Per Serving */
+            /** Format: double */
             calories_per_serving: number | null;
-            /** Protein G Per Serving */
+            /** Format: double */
             protein_g_per_serving: number | null;
-            /** Carbs G Per Serving */
+            /** Format: double */
             carbs_g_per_serving: number | null;
-            /** Fat G Per Serving */
+            /** Format: double */
             fat_g_per_serving: number | null;
-            /** Fiber G Per Serving */
+            /** Format: double */
             fiber_g_per_serving: number | null;
-            /** Sugar G Per Serving */
+            /** Format: double */
             sugar_g_per_serving: number | null;
-            /** Sodium Mg Per Serving */
+            /** Format: double */
             sodium_mg_per_serving: number | null;
         };
-        /** SearchOut */
         SearchOut: {
-            /** Query */
             query: string;
-            /** Results */
             results: components["schemas"]["RecipeOut"][];
-            /** Elapsed Ms */
+            /** Format: double */
             elapsed_ms: number;
         };
     };
@@ -286,7 +259,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    accounts_api_csrf: {
+    auth_csrf: {
         parameters: {
             query?: never;
             header?: never;
@@ -295,7 +268,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description No response body */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -304,7 +277,7 @@ export interface operations {
             };
         };
     };
-    accounts_api_login_view: {
+    auth_login: {
         parameters: {
             query?: never;
             header?: never;
@@ -313,11 +286,10 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Credentials"];
+                "application/json": components["schemas"]["CredentialsRequest"];
             };
         };
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -326,7 +298,13 @@ export interface operations {
                     "application/json": components["schemas"]["Me"];
                 };
             };
-            /** @description Unauthorized */
+            /** @description No response body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -335,7 +313,6 @@ export interface operations {
                     "application/json": components["schemas"]["Message"];
                 };
             };
-            /** @description Forbidden */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -346,7 +323,7 @@ export interface operations {
             };
         };
     };
-    accounts_api_logout_view: {
+    auth_logout: {
         parameters: {
             query?: never;
             header?: never;
@@ -355,7 +332,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description No response body */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -364,7 +341,7 @@ export interface operations {
             };
         };
     };
-    accounts_api_me: {
+    auth_me: {
         parameters: {
             query?: never;
             header?: never;
@@ -373,7 +350,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -384,7 +360,7 @@ export interface operations {
             };
         };
     };
-    accounts_api_get_goals: {
+    profile_get_goals: {
         parameters: {
             query?: never;
             header?: never;
@@ -393,7 +369,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -404,20 +379,19 @@ export interface operations {
             };
         };
     };
-    accounts_api_update_goals: {
+    profile_update_goals: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["Goals"];
+                "application/json": components["schemas"]["GoalsRequest"];
             };
         };
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -428,7 +402,7 @@ export interface operations {
             };
         };
     };
-    queries_api_submit_query: {
+    queries_submit_query: {
         parameters: {
             query?: never;
             header?: never;
@@ -437,11 +411,10 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["QueryIn"];
+                "application/json": components["schemas"]["QueryInRequest"];
             };
         };
         responses: {
-            /** @description Accepted */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -450,9 +423,16 @@ export interface operations {
                     "application/json": components["schemas"]["QueryOut"];
                 };
             };
+            /** @description No response body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
-    queries_api_query_status: {
+    queries_query_status: {
         parameters: {
             query?: never;
             header?: never;
@@ -463,7 +443,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -474,7 +453,7 @@ export interface operations {
             };
         };
     };
-    recipes_api_keyword_search: {
+    recipes_keyword_search: {
         parameters: {
             query: {
                 q: string;
@@ -485,7 +464,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -493,6 +471,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SearchOut"];
                 };
+            };
+            /** @description No response body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

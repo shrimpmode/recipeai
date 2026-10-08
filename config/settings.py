@@ -19,7 +19,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "ninja",  # export_openapi_schema command + Swagger UI assets
+    "rest_framework",
+    "drf_spectacular",  # OpenAPI schema for the frontend's generated types (pnpm gen:api)
     "django.contrib.postgres",  # needed for OpClass in index expressions (recipes trigram indexes)
     "pgvector.django",
     "accounts",
@@ -92,6 +93,24 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in os.environ.get("FRONTEND_ORIGINS", "http://localhost:3000").split(",")
     if origin.strip()
 ]
+
+# --- JSON API (Django REST Framework) -------------------------------------
+# JSON only, session auth (CSRF-checked) and login required unless a view opts out.
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["config.rest.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Nutrition API",
+    "VERSION": "1",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Separate request/response components, so response fields are all marked required.
+    "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {"QueryStatus": "queries.models.QueryRequest.Status"},
+}
 
 # --- Logging ------------------------------------------------------------
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

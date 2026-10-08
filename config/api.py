@@ -1,18 +1,27 @@
+"""URL map of the JSON API, mounted at /api/ (config/urls.py).
+
+Paths have no trailing slash, as the frontend's generated client expects."""
+
 from django.conf import settings
-from ninja import NinjaAPI
+from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from accounts.api import auth_router, profile_router
-from queries.api import router as queries_router
-from recipes.api import router as search_router
+from accounts.api import GoalsView, auth_urls
+from queries.api import QueryStatusView, SubmitQueryView
+from recipes.api import KeywordSearchView
 
-api = NinjaAPI(
-    title="Nutrition API",
-    version="1",
-    urls_namespace="api",
-    # The OpenAPI schema stays on (the frontend's types are generated from it); the Swagger UI is dev-only.
-    docs_url="/docs" if settings.DEBUG else None,
-)
-api.add_router("/auth", auth_router)
-api.add_router("/profile", profile_router)
-api.add_router("/queries", queries_router)
-api.add_router("/search", search_router)
+urlpatterns = [
+    path("auth/", include(auth_urls)),
+    path("profile", GoalsView.as_view()),
+    path("queries", SubmitQueryView.as_view()),
+    path("queries/<int:query_request_id>", QueryStatusView.as_view()),
+    path("search", KeywordSearchView.as_view()),
+]
+
+if settings.DEBUG:
+    # The frontend's types come from `manage.py spectacular` (pnpm gen:api); serving the schema and
+    # Swagger UI is a dev convenience only.
+    urlpatterns += [
+        path("schema", SpectacularAPIView.as_view(), name="api-schema"),
+        path("docs", SpectacularSwaggerView.as_view(url_name="api-schema")),
+    ]
