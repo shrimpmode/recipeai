@@ -1,6 +1,7 @@
 import { formatAmount } from "@/lib/format";
 
 export type RecipeCardData = {
+  id: number;
   name: string;
   sourceUrl: string;
   imageUrl: string | null;

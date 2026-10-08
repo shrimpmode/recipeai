@@ -27,20 +27,26 @@ export function GoalsForm() {
   useEffect(() => {
     // A response for a discarded effect (StrictMode remount, unmount) must not overwrite what the user has typed.
     let current = true;
-    api.GET("/api/profile").then(({ data }) => {
-      if (!current) return;
-      if (!data) {
-        setStatus({ kind: "error", message: "Couldn’t load your goals." });
-        return;
-      }
+    const failed = () => setStatus({ kind: "error", message: "Couldn’t load your goals." });
+    api
+      .GET("/api/profile")
+      .then(({ data }) => {
+        if (!current) return;
+        if (!data) {
+          failed();
+          return;
+        }
       setValues(
         Object.fromEntries(FIELDS.map(({ name }) => [name, data[name]?.toString() ?? ""])) as Record<
           GoalField,
           string
         >,
       );
-      setStatus({ kind: "ready" });
-    });
+        setStatus({ kind: "ready" });
+      })
+      .catch(() => {
+        if (current) failed();
+      });
     return () => {
       current = false;
     };
@@ -53,14 +59,19 @@ export function GoalsForm() {
     const body = Object.fromEntries(
       FIELDS.map(({ name }) => [name, values[name].trim() === "" ? null : Number(values[name])]),
     ) as Goals;
-    await ensureCsrfCookie();
-    const { response } = await api.PUT("/api/profile", { body });
-    setSaving(false);
-    setStatus(
-      response.ok
-        ? { kind: "saved" }
-        : { kind: "error", message: "Couldn’t save. Targets must be between 0 and 20,000." },
-    );
+    try {
+      await ensureCsrfCookie();
+      const { response } = await api.PUT("/api/profile", { body });
+      setStatus(
+        response.ok
+          ? { kind: "saved" }
+          : { kind: "error", message: "Couldn’t save. Targets must be between 0 and 20,000." },
+      );
+    } catch {
+      setStatus({ kind: "error", message: "Couldn’t reach the server. Try again." });
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!values) {

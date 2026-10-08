@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api, ensureCsrfCookie } from "@/lib/api/client";
 
@@ -16,6 +16,11 @@ export function LoginForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  // Warm-up only: onSubmit awaits it again (shared request), so a failure here is retried there.
+  useEffect(() => {
+    ensureCsrfCookie().catch(() => {});
+  }, []);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

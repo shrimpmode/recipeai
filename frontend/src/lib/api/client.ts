@@ -40,8 +40,16 @@ const redirectWhenSignedOut: Middleware = {
 export const api = createClient<paths>({ baseUrl: "" });
 api.use(csrfHeader, redirectWhenSignedOut);
 
-export async function ensureCsrfCookie(): Promise<void> {
-  if (!readCookie("csrftoken")) {
-    await api.GET("/api/auth/csrf");
-  }
+let csrfRequest: Promise<void> | null = null;
+
+/** Sets Django's CSRF cookie if it's missing. Concurrent callers share one request. */
+export function ensureCsrfCookie(): Promise<void> {
+  if (readCookie("csrftoken")) return Promise.resolve();
+  csrfRequest ??= api
+    .GET("/api/auth/csrf")
+    .then(() => undefined)
+    .finally(() => {
+      csrfRequest = null;
+    });
+  return csrfRequest;
 }
