@@ -7,3 +7,5 @@
 *.pyc
 .env
 *.dump
+# Built separately (frontend/Dockerfile)
+frontend/

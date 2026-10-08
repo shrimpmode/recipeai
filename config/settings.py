@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "ninja",  # export_openapi_schema command + Swagger UI assets
     "django.contrib.postgres",  # needed for OpClass in index expressions (recipes trigram indexes)
     "pgvector.django",
     "accounts",
@@ -83,9 +84,14 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "submit-query"
-LOGOUT_REDIRECT_URL = "login"
+# --- Frontend -------------------------------------------------------------
+# Origins of the Next.js app (frontend/). It proxies /api to Django, so requests
+# arrive with the frontend's Origin header; Django's CSRF check must trust it.
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("FRONTEND_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
 
 # --- Logging ------------------------------------------------------------
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

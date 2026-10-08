@@ -1,0 +1,17 @@
+# E2E overlay: the real stack, with only the third-party Claude API replaced by
+# a local stub at the network boundary (the SDK honours ANTHROPIC_BASE_URL).
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
+services:
+  claude-stub:
+    image: node:24-alpine
+    command: node /stub/server.mjs
+    volumes:
+      - ./frontend/e2e/claude-stub:/stub:ro
+
+  worker:
+    environment:
+      ANTHROPIC_BASE_URL: http://claude-stub:8080
+      ANTHROPIC_API_KEY: e2e-stub-key
+    depends_on:
+      claude-stub:
+        condition: service_started

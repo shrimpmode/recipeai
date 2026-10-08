@@ -5,7 +5,6 @@ neither the embedding model nor Claude."""
 from django.contrib.auth.models import User
 from django.db import connection, transaction
 from django.test import TestCase
-from django.urls import reverse
 
 from recipes.models import Recipe
 from recipes.services.keyword_search import MAX_TERMS, matching_recipes, search_recipes
@@ -101,50 +100,50 @@ class TrigramIndexTests(TestCase):
         self.assertIn("recipe_ingredients_trgm", plan)
 
 
-class KeywordSearchEndpointTests(TestCase):
+class KeywordSearchApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="alex", password="pw12345!")
 
-    def test_anonymous_user_is_redirected_to_login(self):
-        response = self.client.get(reverse("keyword-search"), {"q": "oats"})
+    def _search(self, q: str):
+        return self.client.get("/api/search", {"q": q})
 
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse("login"), response.headers["Location"])
+    def test_anonymous_user_is_rejected(self):
+        self.assertEqual(self._search("oats").status_code, 401)
 
     def test_returns_at_most_five_results_with_elapsed_time(self):
         self.client.force_login(self.user)
         for i in range(7):
             _recipe(f"Oat Bowl {i}")
 
-        response = self.client.get(reverse("keyword-search"), {"q": "oat"})
+        response = self._search("oat")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content.decode().count('data-testid="recipe-card"'), 5)
-        self.assertContains(response, 'data-testid="search-elapsed"')
-        self.assertContains(response, "5 results in")
-        self.assertContains(response, " ms")
+        body = response.json()
+        self.assertEqual(len(body["results"]), 5)
+        self.assertEqual(body["query"], "oat")
+        self.assertGreaterEqual(body["elapsed_ms"], 0)
+        self.assertEqual(set(body["results"][0]), {"id", "recipe_name", "source_url", "image_url", *NUTRITION_FIELDS})
 
-    def test_no_match_says_so(self):
+    def test_no_match_returns_an_empty_list(self):
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("keyword-search"), {"q": "durian"})
+        body = self._search("durian").json()
 
-        self.assertContains(response, "0 results in")
-        self.assertContains(response, "No recipes have &ldquo;durian&rdquo;")
+        self.assertEqual(body["results"], [])
 
     def test_blank_query_is_rejected(self):
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("keyword-search"), {"q": "  "})
+        for q in ("", "   "):
+            self.assertEqual(self._search(q).status_code, 422)
 
-        self.assertEqual(response.status_code, 400)
 
-    def test_search_page_offers_both_modes(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse("submit-query"))
-
-        self.assertContains(response, 'id="ai-form"')
-        self.assertContains(response, f'hx-get="{reverse("keyword-search")}"')
-        self.assertContains(response, "AI search")
-        self.assertContains(response, "Keyword search")
+NUTRITION_FIELDS = {
+    "calories_per_serving",
+    "protein_g_per_serving",
+    "carbs_g_per_serving",
+    "fat_g_per_serving",
+    "fiber_g_per_serving",
+    "sugar_g_per_serving",
+    "sodium_mg_per_serving",
+}

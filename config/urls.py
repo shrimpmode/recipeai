@@ -1,15 +1,13 @@
 from django.contrib import admin
-from django.contrib.auth import views as auth_views
-from django.urls import include, path
+from django.urls import path
 
 from config import views
+from config.api import api
 
+# The user-facing UI is the Next.js app in frontend/; Django serves the JSON API,
+# the admin, and the staff-only engineering manual.
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("accounts/login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
-    path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
-    path("profile/", include("accounts.urls")),
+    path("api/", api.urls),
     path("docs/", views.manual, name="manual"),
-    path("search/", include("recipes.urls")),
-    path("", include("queries.urls")),
 ]
