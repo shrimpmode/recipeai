@@ -19,7 +19,7 @@ There is also a **keyword search** mode (no AI): a direct, indexed search of rec
 
 - **Async by design** — query resolution (embed → retrieve → rerank → generate) runs on a Celery worker, not the request thread, so slow embedding/LLM calls can't time out a web request.
 - **Goals are optional, retrieval isn't** — with no profile goals set, results fall back to pure semantic similarity; goals only kick in to re-rank, they never gate a user out of results.
-- **Always exactly 3 results** — the task enforces this explicitly (see `queries/tasks.py`) rather than trusting the LLM's output shape, and retries transient embedding/Claude failures a few times before surfacing an error state.
+- **Always exactly 3 results** — the resolver enforces this explicitly (see `queries/services/resolution.py`) rather than trusting the LLM's output shape. The Celery task re-queues transient failures with backoff and fails permanent ones (e.g. a bad API key) at once ([ADR 0005](docs/adr/0005-ai-search-resolution-seams-and-retries.md)).
 - **Embeddings run locally** — no API key or per-query cost for the retrieval step; only the final selection/description call goes to Claude.
 
 ## Stack

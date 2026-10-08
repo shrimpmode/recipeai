@@ -12,8 +12,8 @@ import { LiveTimer } from "./live-timer";
 import { ModeSwitch, type SearchMode } from "./mode-switch";
 
 const POLL_INTERVAL_MS = 1000;
-// The worker retries Claude with backoff (2 + 4 + 8 s) before giving up; allow for that plus queueing.
-const AI_SEARCH_TIMEOUT_MS = 90_000;
+// Worst case before the worker gives up: 4 attempts × 30 s Claude timeout + ~14 s of backoff, plus queueing.
+const AI_SEARCH_TIMEOUT_MS = 150_000;
 
 const COPY = {
   ai: {

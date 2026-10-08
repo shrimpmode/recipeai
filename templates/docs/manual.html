@@ -381,13 +381,16 @@
       <div class="where">queries/api.py · submit_query · frontend/src/components/search/search-panel.tsx</div>
     </li>
     <li>
-      <strong>Pick up.</strong> The worker marks the request <code>running</code> and logs <code>query_resolution_started</code>
-      with its <code>query_request_id</code>, which then appears on every log line for this request.
+      <strong>Pick up.</strong> The worker skips a request that is already finished or was deleted (so a message
+      delivered twice does no harm), marks the rest <code>running</code> and logs <code>query_attempt_started</code> with its
+      <code>query_request_id</code> and <code>attempt</code>, which then appear on every log line for this request. The task
+      is only the Celery adapter: the steps below happen in the AI search resolution module
+      (<code>queries/services/resolution.py · Resolver.resolve</code>).
       <div class="where">queries/tasks.py · resolve_query</div>
     </li>
     <li>
       <strong>Embed the prompt.</strong> The worker turns the prompt into a 384-dimension vector, in-process, with no network call.
-      <div class="where">recipes/services/embeddings.py · embed_query</div>
+      <div class="where">QueryEmbedder seam · recipes/services/embeddings.py · LocalEmbedder.embed_query</div>
     </li>
     <li>
       <strong>Retrieve.</strong> It fetches the 15 recipes nearest to the prompt by cosine distance, skipping recipes that have no embedding yet. The HNSW index serves this query.
@@ -400,15 +403,18 @@
       <div class="where">queries/services/retrieval.py · rerank_by_goals</div>
     </li>
     <li>
-      <strong>Generate.</strong> The worker sends the shortlist to Claude as JSON and gets back
-      <code>[{recipe_id, description}]</code>. Any ID that was not in the shortlist is dropped and logged
-      (<code>selection_outside_candidates</code>).
-      <div class="where">queries/services/generation.py · select_and_describe</div>
+      <strong>Pick.</strong> The worker sends the shortlist to Claude as JSON and gets back
+      <code>[{recipe_id, description}]</code>. Any ID that was not in the shortlist, or repeats, is dropped and logged
+      (<code>pick_discarded</code>); fewer than 3 usable picks is a retryable failure. Each call is limited to
+      <code>CLAUDE_TIMEOUT_SECONDS</code> (30 s), with the SDK's own retries off.
+      <div class="where">RecipePicker seam · queries/services/generation.py · ClaudePicker.pick</div>
     </li>
     <li>
       <strong>Persist or retry.</strong> On success, the worker writes exactly 3 results to <code>QueryRequest.results</code> and sets
-      status <code>done</code>. On failure, it retries up to <code>QUERY_TASK_MAX_RETRIES</code> times, waiting 2 s, then 4 s, then 8 s,
-      before setting status <code>error</code>.
+      status <code>done</code>. A permanent failure (Claude answers 400, 401, 403 or another 4xx except 408, 409 and 429) sets
+      status <code>error</code> at once. Any other failure re-queues the task up to <code>QUERY_TASK_MAX_RETRIES</code> times,
+      with backoff of about 2, 4 and 8 s plus jitter. The worker is free while it waits, and a pending retry survives a
+      worker restart.
       <div class="where">queries/tasks.py</div>
     </li>
     <li>
@@ -419,11 +425,10 @@
     </li>
   </ol>
 
-  <div class="callout warn">
-    <p><strong>Known gap: every error is retried.</strong>
-    The retry loop treats every exception as transient, so a revoked API key (401) still waits through all its backoff
-    delays before failing. The planned fix is to fail permanent errors (400, 401, 403) on the first attempt and keep
-    retrying timeouts, 429s and 5xx responses.</p>
+  <div class="callout">
+    <p><strong>Worst case.</strong> Four attempts that each time out at 30 s, plus about 14 s of backoff, take roughly
+    2¼ minutes. The frontend waits up to 150 s before telling the user to try again. ADR 0005 records the retry
+    policy.</p>
   </div>
 
   <h3 id="keyword-search">Keyword search (no AI)</h3>
@@ -467,8 +472,10 @@
     <div class="card">
       <div class="tag"><span class="pill amber">queries</span></div>
       <h5>Search pipeline</h5>
-      <p><code>QueryRequest</code>; the <code>resolve_query</code> Celery task; <code>retrieval</code> (kNN + goal
-      re-rank, pure apart from one ORM query); <code>generation</code> (Claude adapter, the seam the tests mock).</p>
+      <p><code>QueryRequest</code>; <code>resolution</code> (the AI search resolution module, with the
+      <code>QueryEmbedder</code> and <code>RecipePicker</code> seams); <code>retrieval</code> (kNN + goal re-rank);
+      <code>generation</code> (<code>ClaudePicker</code>, the Claude adapter); the <code>resolve_query</code> task (Celery
+      adapter: lifecycle and retries).</p>
     </div>
     <div class="card">
       <div class="tag"><span class="pill indigo">accounts</span></div>
@@ -916,7 +923,7 @@ docker compose run --rm worker python manage.py migrate                   <span 
   <div class="table-wrap"><table>
     <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>—</td><td>Required for search. If it is invalid, every query ends in <code>error</code> after its retries.</td></tr>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>—</td><td>Required for AI search. If it is invalid, Claude answers 401 and every query ends in <code>error</code> on its first attempt.</td></tr>
       <tr><td><code>POSTGRES_DB / USER / PASSWORD / HOST / PORT</code></td><td>nutrition / … / db / 5432</td><td>Database connection.</td></tr>
       <tr><td><code>REDIS_URL</code></td><td><code>redis://localhost:6379/0</code></td><td>Celery broker and result backend.</td></tr>
       <tr><td><code>LOG_LEVEL</code></td><td><code>INFO</code></td><td>Checked at startup; an invalid value stops the app from starting.</td></tr>
@@ -925,7 +932,9 @@ docker compose run --rm worker python manage.py migrate                   <span 
     </tbody>
   </table></div>
   <p>Tuning settings that are fixed in <code>settings.py</code>: <code>RETRIEVAL_CANDIDATE_COUNT=15</code>,
-  <code>RETRIEVAL_RERANKED_COUNT=5</code>, <code>RESULT_COUNT=3</code>, <code>QUERY_TASK_MAX_RETRIES=3</code>.</p>
+  <code>RETRIEVAL_RERANKED_COUNT=5</code>, <code>RESULT_COUNT=3</code>, <code>QUERY_TASK_MAX_RETRIES=3</code>,
+  <code>QUERY_RETRY_BACKOFF_SECONDS=2</code>, <code>CLAUDE_TIMEOUT_SECONDS=30</code>, and the adapters
+  <code>AI_SEARCH_EMBEDDER</code> / <code>AI_SEARCH_PICKER</code> (checked at startup).</p>
 
   <h3>Logs</h3>
   <p>
@@ -935,13 +944,13 @@ docker compose run --rm worker python manage.py migrate                   <span 
   <div class="table-wrap"><table>
     <thead><tr><th>Event</th><th>Level</th><th>Key fields</th></tr></thead>
     <tbody>
-      <tr><td><code>query_resolution_started</code></td><td>INFO</td><td><code>query_request_id</code></td></tr>
+      <tr><td><code>query_attempt_started</code></td><td>INFO</td><td><code>query_request_id</code>, <code>attempt</code></td></tr>
       <tr><td><code>claude_selection_completed</code></td><td>INFO</td><td><code>duration_ms</code>, tokens, <code>stop_reason</code>, <code>anthropic_request_id</code></td></tr>
       <tr><td><code>query_attempt_failed</code></td><td>WARNING</td><td><code>attempt</code>, <code>retry_in_s</code>, traceback</td></tr>
-      <tr><td><code>selection_outside_candidates</code></td><td>WARNING</td><td><code>recipe_id</code></td></tr>
+      <tr><td><code>pick_discarded</code></td><td>WARNING</td><td><code>recipe_id</code>, <code>known</code> (false = not in the shortlist)</td></tr>
       <tr><td><code>claude_selection_unparseable</code></td><td>WARNING</td><td><code>response_preview</code> (500 chars)</td></tr>
-      <tr><td><code>query_resolution_succeeded</code></td><td>INFO</td><td><code>attempts</code>, <code>duration_ms</code></td></tr>
-      <tr><td><code>query_resolution_failed</code></td><td>ERROR</td><td><code>attempts</code>, <code>duration_ms</code>, traceback</td></tr>
+      <tr><td><code>query_resolution_succeeded</code></td><td>INFO</td><td><code>attempt</code>, <code>duration_ms</code> (this attempt)</td></tr>
+      <tr><td><code>query_resolution_failed</code></td><td>ERROR</td><td><code>attempt</code>, <code>retryable</code>, <code>duration_ms</code>, traceback</td></tr>
       <tr><td><code>embedding_batch_committed</code></td><td>INFO</td><td><code>last_id</code>, <code>embedded</code></td></tr>
     </tbody>
   </table></div>
@@ -965,7 +974,7 @@ pnpm gen:api                              <span class="c"># after an API change:
 pnpm test:e2e                             <span class="c"># Playwright; start the stack with docker-compose.e2e.yml first</span></code></pre>
   <div class="cards">
     <div class="card"><h5>Real database in tests</h5><p>Tests run against the real pgvector container: the merge SQL, <code>COPY</code>, the advisory lock and the HNSW index are all tested against Postgres itself.</p></div>
-    <div class="card"><h5>Fakes only at the edges</h5><p>The embedding model is swapped for a <code>FakeEmbedder</code> passed in through the <code>Embedder</code> protocol; the Claude call is patched at <code>generation.select_and_describe</code>.</p></div>
+    <div class="card"><h5>Fakes only at the edges</h5><p>Nothing is patched by import path. The backfill takes an <code>Embedder</code>, and AI search's adapters are chosen in settings (<code>AI_SEARCH_EMBEDDER</code>, <code>AI_SEARCH_PICKER</code>), so tests use <code>queries/tests/fakes.py</code>. <code>ClaudePicker</code> is tested with the real SDK against a local HTTP server.</p></div>
     <div class="card"><h5>Fixtures are real Parquet</h5><p>Each test writes a small Parquet file with the same column types as the real source, so pyarrow follows the same code path as in production.</p></div>
   </div>
 </section>
