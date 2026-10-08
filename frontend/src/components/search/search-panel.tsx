@@ -38,6 +38,7 @@ class SearchFailed extends Error {}
 
 function fromKeyword(recipe: KeywordRecipe): RecipeCardData {
   return {
+    id: recipe.id,
     name: recipe.recipe_name,
     sourceUrl: recipe.source_url,
     imageUrl: recipe.image_url,
@@ -195,8 +196,8 @@ function Results({ view }: { view: Extract<View, { kind: "results" }> }) {
         </p>
       ) : (
         <div className="space-y-4">
-          {view.recipes.map((recipe, index) => (
-            <RecipeCard key={`${recipe.name}-${index}`} recipe={recipe} />
+          {view.recipes.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} />
           ))}
         </div>
       )}
