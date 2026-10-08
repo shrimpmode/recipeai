@@ -22,3 +22,8 @@ build/
 htmlcov/
 .idea/
 .vscode/
+node_modules/
+vendor/
+out/
+coverage/
+.turbo/

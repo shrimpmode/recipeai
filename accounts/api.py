@@ -2,93 +2,116 @@
 
 The frontend reaches these through its same-origin `/api` rewrite, so the
 browser holds Django's own `sessionid` and `csrftoken` cookies and no CORS or
-token scheme is needed (see docs/adr/0003)."""
-
-from typing import Annotated
+token scheme is needed (see docs/adr/0003, docs/adr/0004)."""
 
 from django.contrib.auth import authenticate, login, logout
 from django.middleware.csrf import get_token
-from ninja import Field, Router, Schema
-from ninja.security import django_auth
-from ninja.utils import check_csrf
+from django.urls import path
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers, status
+from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.models import Profile
-
-auth_router = Router(tags=["auth"])
-profile_router = Router(tags=["profile"], auth=django_auth)
+from config.rest import enforce_csrf, request_user
 
 
-class Credentials(Schema):
-    username: Annotated[str, Field(min_length=1, max_length=150)]
-    password: Annotated[str, Field(min_length=1, max_length=256)]
+class CredentialsSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    password = serializers.CharField(max_length=256, trim_whitespace=False)
 
 
-class Me(Schema):
-    username: str
-    is_staff: bool
+class MeSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    is_staff = serializers.BooleanField()
 
 
-class Message(Schema):
-    detail: str
-
-
-def _me(user) -> Me:
-    # `is_staff` comes from AbstractUser, not AbstractBaseUser (what authenticate() is typed to return).
-    return Me(username=user.get_username(), is_staff=bool(getattr(user, "is_staff", False)))
-
-
-@auth_router.get("/csrf", response={204: None})
-def csrf(request):
-    """Sets the `csrftoken` cookie; call once before the first unsafe request."""
-    get_token(request)
-    return 204, None
-
-
-@auth_router.post("/login", response={200: Me, 401: Message, 403: Message})
-def login_view(request, credentials: Credentials):
-    # Unauthenticated endpoints skip ninja's CSRF check; login needs it anyway (login CSRF).
-    if check_csrf(request) is not None:
-        return 403, {"detail": "CSRF verification failed."}
-    user = authenticate(request, username=credentials.username, password=credentials.password)
-    if user is None:
-        return 401, {"detail": "Invalid username or password."}
-    login(request, user)
-    return 200, _me(user)
-
-
-@auth_router.post("/logout", auth=django_auth, response={204: None})
-def logout_view(request):
-    logout(request)
-    return 204, None
-
-
-@auth_router.get("/me", auth=django_auth, response=Me)
-def me(request):
-    return _me(request.user)
+class MessageSerializer(serializers.Serializer):
+    detail = serializers.CharField()
 
 
 # Daily targets; the bounds only reject typos and nonsense, not unusual diets.
-Target = Annotated[float | None, Field(default=None, ge=0, le=20_000)]
+_TARGET = {"min_value": 0, "max_value": 20_000, "allow_null": True, "default": None}
 
 
-class Goals(Schema):
-    daily_calorie_target: Target
-    protein_target_g: Target
-    carbs_target_g: Target
-    fat_target_g: Target
-    fiber_target_g: Target
+class GoalsSerializer(serializers.ModelSerializer):
+    """PUT replaces every goal: a field left out is cleared (default None)."""
+
+    class Meta:
+        model = Profile
+        fields = ["daily_calorie_target", "protein_target_g", "carbs_target_g", "fat_target_g", "fiber_target_g"]
+        extra_kwargs = dict.fromkeys(fields, _TARGET)
 
 
-@profile_router.get("", response=Goals)
-def get_goals(request):
-    profile, _ = Profile.objects.get_or_create(user=request.user)
-    return profile
+def _me(user) -> dict:
+    # `is_staff` comes from AbstractUser, not AbstractBaseUser (what authenticate() is typed to return).
+    return MeSerializer({"username": user.get_username(), "is_staff": bool(getattr(user, "is_staff", False))}).data
 
 
-@profile_router.put("", response=Goals)
-def update_goals(request, goals: Goals):
-    profile, _ = Profile.objects.get_or_create(user=request.user)
-    for field, value in goals.dict().items():
-        setattr(profile, field, value)
-    profile.save()
-    return profile
+class CsrfView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(operation_id="auth_csrf", responses={204: None})
+    def get(self, request: Request) -> Response:
+        """Sets the `csrftoken` cookie; call once before the first unsafe request."""
+        get_token(request._request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        operation_id="auth_login",
+        request=CredentialsSerializer,
+        responses={200: MeSerializer, 400: None, 401: MessageSerializer, 403: MessageSerializer},
+    )
+    def post(self, request: Request) -> Response:
+        enforce_csrf(request)
+        credentials = CredentialsSerializer(data=request.data)
+        credentials.is_valid(raise_exception=True)
+        user = authenticate(request._request, **credentials.validated_data)
+        if user is None:
+            return Response({"detail": "Invalid username or password."}, status=status.HTTP_401_UNAUTHORIZED)
+        login(request._request, user)
+        return Response(_me(user))
+
+
+class LogoutView(APIView):
+    @extend_schema(operation_id="auth_logout", request=None, responses={204: None})
+    def post(self, request: Request) -> Response:
+        logout(request._request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MeView(APIView):
+    @extend_schema(operation_id="auth_me", responses=MeSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(_me(request.user))
+
+
+class GoalsView(APIView):
+    def _profile(self, request: Request) -> Profile:
+        profile, _ = Profile.objects.get_or_create(user=request_user(request))
+        return profile
+
+    @extend_schema(operation_id="profile_get_goals", responses=GoalsSerializer)
+    def get(self, request: Request) -> Response:
+        return Response(GoalsSerializer(self._profile(request)).data)
+
+    @extend_schema(operation_id="profile_update_goals", request=GoalsSerializer, responses=GoalsSerializer)
+    def put(self, request: Request) -> Response:
+        goals = GoalsSerializer(self._profile(request), data=request.data)
+        goals.is_valid(raise_exception=True)
+        goals.save()
+        return Response(goals.data)
+
+
+auth_urls = [
+    path("csrf", CsrfView.as_view()),
+    path("login", LoginView.as_view()),
+    path("logout", LogoutView.as_view()),
+    path("me", MeView.as_view()),
+]

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "gen:api": "cd .. && uv run python manage.py export_openapi_schema --api config.api.api --output frontend/src/lib/api/openapi.json --indent 2 && cd frontend && openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts",
+    "gen:api": "cd .. && uv run python manage.py spectacular --format openapi-json --validate --fail-on-warn --file frontend/src/lib/api/openapi.json && cd frontend && openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
