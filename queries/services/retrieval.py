@@ -1,7 +1,7 @@
-"""Turning a prompt + optional nutrition goals into a shortlist of recipes.
+"""Turning an embedded prompt + optional nutrition goals into a shortlist of recipes.
 
-Retrieval: top-N recipes by pgvector cosine similarity against the embedded
-prompt. Re-ranking: if the user has any nutrition goals set, narrow that
+Retrieval: top-N recipes by pgvector cosine similarity against the prompt's
+embedding. Re-ranking: if the user has any nutrition goals set, narrow that
 shortlist further by closeness to those goals.
 """
 
@@ -9,7 +9,6 @@ from pgvector.django import CosineDistance
 
 from accounts.models import Profile
 from recipes.models import Recipe
-from recipes.services.embeddings import embed_query
 
 # Goals are stored as daily targets; recipes are scored per serving. Scoring
 # assumes a recipe should account for roughly one meal's share of the day.
@@ -24,8 +23,7 @@ GOAL_TO_RECIPE_FIELD = {
 }
 
 
-def retrieve_by_similarity(prompt: str, limit: int) -> list[Recipe]:
-    query_embedding = embed_query(prompt)
+def retrieve_by_similarity(query_embedding: list[float], limit: int) -> list[Recipe]:
     # Recipes loaded but not yet embedded (backfill_embeddings pending) are skipped.
     recipes = Recipe.objects.filter(embedding__isnull=False)
     return list(recipes.order_by(CosineDistance("embedding", query_embedding))[:limit])
@@ -50,8 +48,10 @@ def rerank_by_goals(candidates: list[Recipe], profile: Profile, limit: int) -> l
     return sorted(candidates, key=lambda recipe: _goal_closeness_score(recipe, profile))[:limit]
 
 
-def select_candidates(prompt: str, profile: Profile | None, candidate_count: int, reranked_count: int) -> list[Recipe]:
-    candidates = retrieve_by_similarity(prompt, candidate_count)
+def select_candidates(
+    query_embedding: list[float], profile: Profile | None, candidate_count: int, reranked_count: int
+) -> list[Recipe]:
+    candidates = retrieve_by_similarity(query_embedding, candidate_count)
 
     if profile is not None and profile.has_goals():
         return rerank_by_goals(candidates, profile, reranked_count)

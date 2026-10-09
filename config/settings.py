@@ -148,7 +148,9 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true"
-CELERY_TASK_EAGER_PROPAGATES = True
+# Off: with it on, eager mode re-raises the task's Retry instead of running the retry. resolve_query
+# records its own failures, and Celery still logs any unexpected task crash.
+CELERY_TASK_EAGER_PROPAGATES = False
 # Use LOGGING above in the worker too, instead of Celery replacing the root logger.
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
@@ -163,7 +165,17 @@ EMBEDDING_DIMENSIONS = 384
 RETRIEVAL_CANDIDATE_COUNT = 15
 RETRIEVAL_RERANKED_COUNT = 5
 RESULT_COUNT = 3
+
+# --- AI search resolution (queries/services/resolution.py) ----------------
+# Adapters at the resolver's two seams; tests swap in queries.tests.fakes.
+# Checked at startup (QueriesConfig.ready).
+AI_SEARCH_EMBEDDER = "recipes.services.embeddings.LocalEmbedder"
+AI_SEARCH_PICKER = "queries.services.generation.ClaudePicker"
+# One Claude call; the SDK's own retries are off (the Celery task retries).
+CLAUDE_TIMEOUT_SECONDS = 30.0
+# Retries after the first attempt, re-queued with backoff of ~2, 4, 8 s (with jitter).
 QUERY_TASK_MAX_RETRIES = 3
+QUERY_RETRY_BACKOFF_SECONDS = 2.0
 
 # --- Keyword search (no AI) -----------------------------------------------
 KEYWORD_SEARCH_RESULT_COUNT = 5
