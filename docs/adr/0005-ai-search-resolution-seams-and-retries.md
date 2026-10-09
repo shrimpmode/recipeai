@@ -29,5 +29,5 @@ The retry policy had two problems:
 
 - **Eager mode needs exception propagation off.** Celery eager mode re-raises `Retry` when `CELERY_TASK_EAGER_PROPAGATES` is on, instead of running the retry, so the setting is now off. The task records its own failures, and Celery still logs unexpected task crashes.
 - **Each attempt is its own task run.** Logs carry `attempt` and per-attempt `duration_ms`; the whole wait is `QueryRequest.elapsed_seconds`.
-- **A request still in progress when its message is delivered twice can resolve twice** (two Claude calls). The last write wins, and both results are valid. Locking the row while it runs would remove this, if it ever matters.
+- **A request still in progress when its message is delivered twice can resolve twice** (two Claude calls). Since ADR 0007 the first write wins, because transitions only apply to an unfinished request. Locking the row while it runs would also save the second call, if it ever matters.
 - **Not done:** a circuit breaker for Claude (failing fast while it's down across many requests), and a fallback such as returning the shortlist without descriptions.

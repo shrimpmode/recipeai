@@ -180,6 +180,9 @@ AI_SEARCH_MODEL_TIMEOUT_SECONDS = float(os.environ.get("AI_SEARCH_MODEL_TIMEOUT_
 # Retries after the first attempt, re-queued with backoff of ~2, 4, 8 s (with jitter).
 QUERY_TASK_MAX_RETRIES = 3
 QUERY_RETRY_BACKOFF_SECONDS = 2.0
+# How long a query request may stay unfinished before it ends as an error, stamped on each
+# request at submit. Checked at startup to cover the worst case of the retries above.
+QUERY_DEADLINE_SECONDS = float(os.environ.get("QUERY_DEADLINE_SECONDS", "150"))
 
 # --- Keyword search (no AI) -----------------------------------------------
 KEYWORD_SEARCH_RESULT_COUNT = 5

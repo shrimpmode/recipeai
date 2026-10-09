@@ -16,7 +16,7 @@ class QueryInSerializer(serializers.Serializer):
 
 
 class ResultOutSerializer(serializers.Serializer):
-    """One entry of `QueryRequest.results` (see `queries.tasks._serialize_result`)."""
+    """One entry of `QueryRequest.results` (built by `queries.services.resolution._result`)."""
 
     recipe_id = serializers.IntegerField()
     recipe_name = serializers.CharField()
@@ -38,16 +38,21 @@ class QueryOutSerializer(serializers.Serializer):
     results = ResultOutSerializer(many=True, allow_null=True)
     # Set once the request is finished (done or error): submit-to-finish time, queueing included.
     elapsed_seconds = serializers.FloatField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    # The server ends the request as an error by then, so polling until done or error always
+    # terminates; clients needn't keep their own deadline.
+    expires_at = serializers.DateTimeField()
 
 
 def _query_out(query_request: QueryRequest) -> dict:
-    finished = query_request.status in (QueryRequest.Status.DONE, QueryRequest.Status.ERROR)
     return QueryOutSerializer(
         {
             "id": query_request.id,
             "status": query_request.status,
             "results": query_request.results if query_request.status == QueryRequest.Status.DONE else None,
-            "elapsed_seconds": query_request.elapsed_seconds if finished else None,
+            "elapsed_seconds": query_request.elapsed_seconds,
+            "created_at": query_request.created_at,
+            "expires_at": query_request.deadline,
         }
     ).data
 
@@ -73,4 +78,6 @@ class QueryStatusView(APIView):
     @extend_schema(operation_id="queries_query_status", responses=QueryOutSerializer)
     def get(self, request: Request, query_request_id: int) -> Response:
         query_request = get_object_or_404(QueryRequest, id=query_request_id, user=request_user(request))
+        # A request whose worker died, or never picked it up, ends here once its deadline passes.
+        query_request.expire_if_overdue()
         return Response(_query_out(query_request))

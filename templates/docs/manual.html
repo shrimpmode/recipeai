@@ -415,21 +415,25 @@
       status <code>done</code>. A permanent failure (the provider answers 400, 401, 403 or another 4xx except 408, 409 and 429, or its API key is not set) sets
       status <code>error</code> at once. Any other failure re-queues the task up to <code>QUERY_TASK_MAX_RETRIES</code> times,
       with backoff of about 2, 4 and 8 s plus jitter. The worker is free while it waits, and a pending retry survives a
-      worker restart.
-      <div class="where">queries/tasks.py</div>
+      worker restart. A retry that would start after the request's deadline isn't queued; the request fails at once.
+      Every status change goes through <code>QueryRequest</code>'s transitions, which only apply to an unfinished request, so a
+      late or duplicate attempt can't overwrite a finished one.
+      <div class="where">queries/tasks.py · queries/models.py (start, succeed, fail, expire_if_overdue)</div>
     </li>
     <li>
       <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the results once done, and
-      <code>elapsed_seconds</code> once finished. The provider's error text is logged but never returned. It is scoped to the owner,
+      <code>elapsed_seconds</code> once finished, plus <code>created_at</code> and <code>expires_at</code>. A request past its deadline
+      is ended as an error before the answer is sent, so a request whose worker died still finishes. The provider's error text is logged but never returned. It is scoped to the owner,
       so asking for another user's request returns 404.
       <div class="where">queries/api.py · query_status</div>
     </li>
   </ol>
 
   <div class="callout">
-    <p><strong>Worst case.</strong> Four attempts that each time out at 30 s, plus about 14 s of backoff, take roughly
-    2¼ minutes. The frontend waits up to 150 s before telling the user to try again. ADR 0005 records the retry
-    policy.</p>
+    <p><strong>Worst case and deadline.</strong> Four attempts that each time out at 30 s, plus up to 14 s of backoff, take
+    134 s. Each request's deadline (<code>QUERY_DEADLINE_SECONDS</code>, 150 s, stamped as <code>expires_at</code> at submit) must
+    cover that, which is checked at startup. Past the deadline the server ends the request as an error, so the frontend
+    just polls until done or error. ADR 0005 records the retry policy; ADR 0007 the lifecycle and deadline.</p>
   </div>
 
   <h3 id="keyword-search">Keyword search (no AI)</h3>
@@ -662,6 +666,8 @@
         <tr><td><code>status</code></td><td class="type">varchar(10)</td><td><span class="pill">pending</span> <span class="pill amber">running</span> <span class="pill teal">done</span> <span class="pill rose">error</span></td></tr>
         <tr><td><code>results</code></td><td class="type">jsonb null</td><td>Once status is done, this holds exactly <code>RESULT_COUNT</code> recipe snapshots. They are copies, so later corpus reloads do not change past answers.</td></tr>
         <tr><td><code>error_message</code>, <code>created_at</code>, <code>updated_at</code></td><td class="type">text / timestamptz</td><td></td></tr>
+        <tr><td><code>expires_at</code></td><td class="type">timestamptz null</td><td>The deadline, stamped at submit. Nullable only until the contract migration (ADR 0007).</td></tr>
+        <tr><td><code>finished_at</code></td><td class="type">timestamptz null</td><td>Set when the request ends; for an expired request, its deadline. <code>elapsed_seconds</code> is measured to it.</td></tr>
       </tbody>
     </table></div>
   </div>
@@ -675,6 +681,7 @@
       <tr><td><code>recipes 0002</code></td><td>Changes the vector dimension from 512 to 384 (the MiniLM model).</td><td></td></tr>
       <tr><td><code>recipes 0003</code></td><td><code>IngestionRun</code>; nullable <code>embedding</code>; embedding metadata columns; <code>last_seen_run</code>; staging and reject tables.</td><td>Expand step. Additive only.</td></tr>
       <tr><td><code>recipes 0004</code></td><td><code>AddIndexConcurrently</code> for HNSW, then <code>ANALYZE</code>.</td><td><code>atomic = False</code>. Does not block writes. Best applied <em>after</em> the backfill, so the index is built once over complete data.</td></tr>
+      <tr><td><code>queries 0002</code>, <code>0003</code></td><td>Adds nullable <code>expires_at</code> and <code>finished_at</code>, then backfills them (deadline = <code>created_at</code> + 150 s; finish = <code>updated_at</code> for finished rows).</td><td>Expand and migrate. The contract step (NOT NULL) is a TODO.</td></tr>
       <tr><td><code>recipes 0005</code></td><td>Enables <code>pg_trgm</code>; <code>AddIndexConcurrently</code> for the two trigram GIN indexes, then <code>ANALYZE</code>.</td><td><code>atomic = False</code>. About 2 s per index on the 38k corpus. Needs <code>django.contrib.postgres</code> in <code>INSTALLED_APPS</code> to render <code>OpClass</code>.</td></tr>
     </tbody>
   </table></div>
@@ -936,7 +943,7 @@ docker compose run --rm worker python manage.py migrate                   <span 
   </table></div>
   <p>Tuning settings that are fixed in <code>settings.py</code>: <code>RETRIEVAL_CANDIDATE_COUNT=15</code>,
   <code>RETRIEVAL_RERANKED_COUNT=5</code>, <code>RESULT_COUNT=3</code>, <code>QUERY_TASK_MAX_RETRIES=3</code>,
-  <code>QUERY_RETRY_BACKOFF_SECONDS=2</code>, and the adapters
+  <code>QUERY_RETRY_BACKOFF_SECONDS=2</code>, <code>QUERY_DEADLINE_SECONDS=150</code> (env; checked at startup), and the adapters
   <code>AI_SEARCH_EMBEDDER</code> / <code>AI_SEARCH_PICKER</code> (checked at startup).</p>
 
   <h3>Logs</h3>
@@ -953,7 +960,8 @@ docker compose run --rm worker python manage.py migrate                   <span 
       <tr><td><code>pick_discarded</code></td><td>WARNING</td><td><code>recipe_id</code>, <code>known</code> (false = not in the shortlist)</td></tr>
       <tr><td><code>ai_selection_unusable</code></td><td>WARNING</td><td><code>model</code>, <code>error</code>, <code>response_preview</code> (500 chars)</td></tr>
       <tr><td><code>query_resolution_succeeded</code></td><td>INFO</td><td><code>attempt</code>, <code>duration_ms</code> (this attempt)</td></tr>
-      <tr><td><code>query_resolution_failed</code></td><td>ERROR</td><td><code>attempt</code>, <code>retryable</code>, <code>duration_ms</code>, traceback</td></tr>
+      <tr><td><code>query_resolution_failed</code></td><td>ERROR</td><td><code>attempt</code>, <code>retryable</code>, <code>deadline_reached</code>, <code>duration_ms</code>, traceback</td></tr>
+      <tr><td><code>query_expired</code></td><td>WARNING</td><td><code>attempt</code>, <code>discarded_results</code> (true = a late success was thrown away)</td></tr>
       <tr><td><code>embedding_batch_committed</code></td><td>INFO</td><td><code>last_id</code>, <code>embedded</code></td></tr>
     </tbody>
   </table></div>
