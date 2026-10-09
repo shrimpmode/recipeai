@@ -7,9 +7,12 @@ at once, ignoring the countdown). The embedder and the picker are the fake
 adapters, selected through settings; nothing is patched.
 """
 
+from datetime import datetime, timedelta
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from queries.models import QueryRequest
 from queries.services.resolution import PermanentFailure, Pick
@@ -143,6 +146,54 @@ class QueryFlowTests(TestCase):
         query_request.refresh_from_db()
         self.assertEqual(query_request.results, [])
         self.assertEqual(self.picker.shortlists, [])
+
+    def test_polling_an_overdue_request_ends_it_as_an_error(self):
+        self.client.force_login(self.user)
+        query_request = QueryRequest.objects.create(
+            user=self.user, prompt="worker died", expires_at=timezone.now() - timedelta(seconds=1)
+        )
+
+        body = self.client.get(f"/api/queries/{query_request.id}").json()
+
+        self.assertEqual(body["status"], "error")
+        self.assertIsNotNone(body["elapsed_seconds"])
+        self.assertEqual(self._only_request().error_message, QueryRequest.EXPIRED_MESSAGE)
+
+    def test_the_poll_says_when_the_server_will_give_up(self):
+        self.client.force_login(self.user)
+        query_request = QueryRequest.objects.create(user=self.user, prompt="queued")
+
+        body = self.client.get(f"/api/queries/{query_request.id}").json()
+
+        self.assertEqual(body["status"], "pending")
+        self.assertEqual(datetime.fromisoformat(body["expires_at"]), query_request.deadline)
+        self.assertEqual(datetime.fromisoformat(body["created_at"]), query_request.created_at)
+
+    def test_an_overdue_request_is_not_started(self):
+        query_request = QueryRequest.objects.create(
+            user=self.user, prompt="late", expires_at=timezone.now() - timedelta(seconds=1)
+        )
+
+        with self.assertLogs("queries.tasks", level="INFO") as logs:
+            resolve_query.delay(query_request.id)
+
+        self.assertEqual([r.getMessage() for r in logs.records], ["query_expired"])
+        self.assertEqual(self.picker.shortlists, [])
+
+    @override_settings(QUERY_RETRY_BACKOFF_SECONDS=2.0)
+    def test_a_retry_that_would_outlive_the_deadline_fails_now(self):
+        query_request = QueryRequest.objects.create(
+            user=self.user, prompt="tight", expires_at=timezone.now() + timedelta(seconds=0.5)
+        )
+        self.picker.script = [RuntimeError("overloaded")]
+
+        with self.assertLogs("queries.tasks", level="WARNING") as logs:
+            resolve_query.delay(query_request.id)
+
+        query_request.refresh_from_db()
+        self.assertEqual(query_request.status, QueryRequest.Status.ERROR)
+        self.assertEqual(len(self.picker.shortlists), 1)  # no retry queued
+        self.assertTrue(logs.records[-1].deadline_reached)  # type: ignore[attr-defined]
 
     def test_a_request_deleted_while_queued_is_skipped(self):
         query_request = QueryRequest.objects.create(user=self.user, prompt="gone")

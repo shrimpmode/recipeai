@@ -12,8 +12,9 @@ import { LiveTimer } from "./live-timer";
 import { ModeSwitch, type SearchMode } from "./mode-switch";
 
 const POLL_INTERVAL_MS = 1000;
-// Worst case before the worker gives up: 4 attempts × 30 s Claude timeout + ~14 s of backoff, plus queueing.
-const AI_SEARCH_TIMEOUT_MS = 150_000;
+// The server ends every AI search by its expires_at, so polling until done or error terminates.
+// This grace only guards against a server that stops honouring that; it is not the deadline.
+const AI_SEARCH_GRACE_MS = 30_000;
 
 const COPY = {
   ai: {
@@ -82,7 +83,9 @@ export function SearchPanel() {
     if (!submitted.data) throw new SearchFailed("Couldn’t start the search. Try again.");
 
     let query: QueryResult = submitted.data;
-    const deadline = performance.now() + AI_SEARCH_TIMEOUT_MS;
+    // Measured from the server's own timestamps, so a skewed client clock doesn't matter.
+    const budgetMs = Date.parse(query.expires_at) - Date.parse(query.created_at);
+    const deadline = performance.now() + budgetMs + AI_SEARCH_GRACE_MS;
     while (query.status === "pending" || query.status === "running") {
       if (ticket.current !== myTicket) return null;
       if (performance.now() > deadline) throw new SearchFailed("This is taking too long. Try again in a moment.");

@@ -191,6 +191,10 @@ export interface components {
             results: components["schemas"]["ResultOut"][] | null;
             /** Format: double */
             elapsed_seconds: number | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
         };
         /**
          * @description * `pending` - Pending
@@ -222,7 +226,7 @@ export interface components {
             /** Format: double */
             readonly sodium_mg_per_serving: number | null;
         };
-        /** @description One entry of `QueryRequest.results` (see `queries.tasks._serialize_result`). */
+        /** @description One entry of `QueryRequest.results` (built by `queries.services.resolution._result`). */
         ResultOut: {
             recipe_id: number;
             recipe_name: string;
