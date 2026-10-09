@@ -155,7 +155,9 @@ CELERY_TASK_EAGER_PROPAGATES = False
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
 # --- External APIs ------------------------------------------------------
+# Only the provider named in AI_SEARCH_MODEL needs its key (checked when a worker first builds the model).
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 # Embeddings run locally via sentence-transformers (see recipes/services/embeddings.py) -
 # no API key needed. 384 is all-MiniLM-L6-v2's native output size.
@@ -170,9 +172,11 @@ RESULT_COUNT = 3
 # Adapters at the resolver's two seams; tests swap in queries.tests.fakes.
 # Checked at startup (QueriesConfig.ready).
 AI_SEARCH_EMBEDDER = "recipes.services.embeddings.LocalEmbedder"
-AI_SEARCH_PICKER = "queries.services.generation.ClaudePicker"
-# One Claude call; the SDK's own retries are off (the Celery task retries).
-CLAUDE_TIMEOUT_SECONDS = 30.0
+AI_SEARCH_PICKER = "queries.services.generation.LLMPicker"
+# The LLM behind LLMPicker, as "provider:model" (providers: queries/services/model_providers.py).
+AI_SEARCH_MODEL = os.environ.get("AI_SEARCH_MODEL", "anthropic:claude-haiku-4-5-20251001")
+# One model call; the SDK's own retries are off (the Celery task retries).
+AI_SEARCH_MODEL_TIMEOUT_SECONDS = float(os.environ.get("AI_SEARCH_MODEL_TIMEOUT_SECONDS", "30"))
 # Retries after the first attempt, re-queued with backoff of ~2, 4, 8 s (with jitter).
 QUERY_TASK_MAX_RETRIES = 3
 QUERY_RETRY_BACKOFF_SECONDS = 2.0

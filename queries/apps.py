@@ -15,4 +15,7 @@ class QueriesConfig(AppConfig):
                 import_string(getattr(settings, name))
             except ImportError as exc:
                 raise ImproperlyConfigured(f"{name}: {exc}") from exc
+        from queries.services.model_providers import ModelSpec
+
+        ModelSpec.parse(settings.AI_SEARCH_MODEL)
         from queries.services import resolution  # noqa: F401  (connects its setting_changed receiver)
