@@ -10,7 +10,7 @@ A Next.js + Django app that turns a free-text prompt like *"something high fiber
    - embeds the prompt with a local `sentence-transformers` model
    - retrieves the closest recipes from a Postgres/`pgvector` corpus by cosine similarity
    - if the user has goals set, re-ranks those candidates by nutritional closeness to their targets
-   - hands the shortlist to Claude Haiku, which picks and writes a short description for the final 3
+   - hands the shortlist to an LLM (Claude Haiku by default, through Pydantic AI, so the provider is a setting: `AI_SEARCH_MODEL`), which picks and writes a short description for the final 3
 4. The page polls until the result is ready and shows 3 recipes with descriptions, per-serving nutrition stats, and a link back to the source.
 
 There is also a **keyword search** mode (no AI): a direct, indexed search of recipe names and ingredients that returns up to 5 matches in milliseconds. Both modes show how long the search took.
@@ -20,11 +20,11 @@ There is also a **keyword search** mode (no AI): a direct, indexed search of rec
 - **Async by design** — query resolution (embed → retrieve → rerank → generate) runs on a Celery worker, not the request thread, so slow embedding/LLM calls can't time out a web request.
 - **Goals are optional, retrieval isn't** — with no profile goals set, results fall back to pure semantic similarity; goals only kick in to re-rank, they never gate a user out of results.
 - **Always exactly 3 results** — the resolver enforces this explicitly (see `queries/services/resolution.py`) rather than trusting the LLM's output shape. The Celery task re-queues transient failures with backoff and fails permanent ones (e.g. a bad API key) at once ([ADR 0005](docs/adr/0005-ai-search-resolution-seams-and-retries.md)).
-- **Embeddings run locally** — no API key or per-query cost for the retrieval step; only the final selection/description call goes to Claude.
+- **Embeddings run locally** — no API key or per-query cost for the retrieval step; only the final selection/description call goes to the LLM provider.
 
 ## Stack
 
-Next.js (App Router, TypeScript, Tailwind) · Django + Django REST Framework (JSON API, OpenAPI via drf-spectacular) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Anthropic Claude Haiku · Playwright · Docker Compose
+Next.js (App Router, TypeScript, Tailwind) · Django + Django REST Framework (JSON API, OpenAPI via drf-spectacular) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Pydantic AI + Anthropic Claude Haiku (provider configurable) · Playwright · Docker Compose
 
 The browser only talks to Next.js; Next.js proxies `/api` to Django, so sessions and CSRF work on one origin. See [ADR 0003](docs/adr/0003-nextjs-frontend-django-api.md).
 
@@ -45,7 +45,7 @@ The `embed_recipes` management command pulls a curated batch from this dataset (
 ## Running locally
 
 ```
-cp .env.example .env   # fill in ANTHROPIC_API_KEY (embeddings run locally, no key needed)
+cp .env.example .env   # fill in ANTHROPIC_API_KEY, or set AI_SEARCH_MODEL to another provider and its key (embeddings run locally, no key needed)
 docker compose up --build   # web + worker + frontend; images install from uv.lock / pnpm-lock.yaml
 docker compose exec web python manage.py migrate
 docker compose exec web python manage.py createsuperuser
@@ -123,4 +123,4 @@ POSTGRES_HOST=localhost uv run python manage.py migrate
 POSTGRES_HOST=localhost uv run python manage.py test
 ```
 
-Tests need a real Postgres with the `pgvector` extension (via `docker compose up -d db`) since recipe embeddings use a `VectorField`; the Claude API call is mocked in tests (embeddings run locally via sentence-transformers), so no API keys are required to run the suite.
+Tests need a real Postgres with the `pgvector` extension (via `docker compose up -d db`) since recipe embeddings use a `VectorField`; the LLM provider is faked in tests (fake adapters, and local HTTP servers standing in for the Anthropic and OpenAI APIs) (embeddings run locally via sentence-transformers), so no API keys are required to run the suite.

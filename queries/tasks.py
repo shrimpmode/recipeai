@@ -2,8 +2,9 @@
 
 Owns the `QueryRequest` lifecycle and the retry policy:
 
-- A `PermanentFailure` (bad credentials, a request Claude rejects) marks the
-  request as errored at once.
+- A `PermanentFailure` (bad credentials, a request the model provider rejects)
+  or `ImproperlyConfigured` (e.g. no API key for AI_SEARCH_MODEL's provider)
+  marks the request as errored at once.
 - Anything else is retried up to QUERY_TASK_MAX_RETRIES times by re-queueing
   the task with exponential backoff and jitter, so the worker is free between
   attempts and a pending retry survives a worker restart.
@@ -18,6 +19,7 @@ from typing import cast
 
 from celery import Task, shared_task
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 from accounts.models import Profile
 from queries.models import QueryRequest
@@ -52,7 +54,7 @@ def _resolve_query(self: Task, query_request_id: int) -> None:
     try:
         profile = Profile.objects.filter(user_id=query_request.user_id).first()
         results = default_resolver().resolve(query_request.prompt, profile)
-    except PermanentFailure as exc:
+    except (PermanentFailure, ImproperlyConfigured) as exc:
         _mark_failed(query_request, exc, log_context | {"retryable": False, "duration_ms": _elapsed_ms(started)})
         return
     except Exception as exc:

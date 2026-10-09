@@ -97,7 +97,7 @@ class QueryFlowTests(TestCase):
 
     def test_permanent_failure_is_not_retried(self):
         self.client.force_login(self.user)
-        self.picker.script = [PermanentFailure("Claude rejected the request: HTTP 401")]
+        self.picker.script = [PermanentFailure("anthropic rejected the request: HTTP 401")]
 
         with self.assertLogs("queries.tasks", level="WARNING") as logs:
             self._submit()
@@ -107,6 +107,22 @@ class QueryFlowTests(TestCase):
         self.assertEqual(len(self.picker.shortlists), 1)
         self.assertEqual([r.levelname for r in logs.records], ["ERROR"])
         self.assertFalse(logs.records[0].retryable)  # type: ignore[attr-defined]
+
+    @override_settings(
+        AI_SEARCH_PICKER="queries.services.generation.LLMPicker",
+        AI_SEARCH_MODEL="anthropic:claude-haiku-4-5-20251001",
+        ANTHROPIC_API_KEY="",
+    )
+    def test_a_missing_provider_key_fails_at_once_without_retrying(self):
+        self.client.force_login(self.user)
+
+        with self.assertLogs("queries.tasks", level="WARNING") as logs:
+            self._submit()
+
+        query_request = self._only_request()
+        self.assertEqual(query_request.status, QueryRequest.Status.ERROR)
+        self.assertIn("ANTHROPIC_API_KEY", query_request.error_message)
+        self.assertEqual([r.levelname for r in logs.records], ["ERROR"])
 
     def test_unusable_picks_are_retried(self):
         self.client.force_login(self.user)

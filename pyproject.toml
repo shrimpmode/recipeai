@@ -10,7 +10,6 @@ dependencies = [
     "pgvector>=0.3.0",
     "celery>=5.3",
     "redis>=5.0",
-    "anthropic>=0.34",
     "sentence-transformers>=3.0",
     # Listed directly only so [tool.uv.sources] can route it to the CPU-only build.
     "torch>=2.14",
@@ -21,6 +20,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "djangorestframework>=3.17.2",
     "drf-spectacular>=0.30.0",
+    "pydantic-ai-slim[anthropic,openai]>=2.54",
 ]
 
 [dependency-groups]

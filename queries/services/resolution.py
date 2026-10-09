@@ -7,7 +7,7 @@ are slow, paid or heavy sit behind seams, each with two adapters:
 
 - `QueryEmbedder`: `recipes.services.embeddings.LocalEmbedder` in production,
   `queries.tests.fakes.FakeEmbedder` in tests.
-- `RecipePicker`: `queries.services.generation.ClaudePicker` in production,
+- `RecipePicker`: `queries.services.generation.LLMPicker` (any LLM provider, via Pydantic AI) in production,
   `queries.tests.fakes.FakePicker` in tests.
 
 Settings choose the adapters (`AI_SEARCH_EMBEDDER`, `AI_SEARCH_PICKER`);

@@ -1,6 +1,6 @@
 # 0005 — AI search resolution: injected adapters, Celery-native retries, failure classes
 
-Date: 2026-10-08 · Status: accepted
+Date: 2026-10-08 · Status: accepted · Amended by 0006 (`ClaudePicker` became the provider-neutral `LLMPicker`; `CLAUDE_TIMEOUT_SECONDS` became `AI_SEARCH_MODEL_TIMEOUT_SECONDS`)
 
 ## Context
 
