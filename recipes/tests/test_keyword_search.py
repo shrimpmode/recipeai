@@ -1,8 +1,6 @@
-"""Keyword search without AI (`search_recipes` and the `/search/` endpoint),
-run against the real Postgres database. Nothing is mocked: this path calls
-neither the embedding model nor Claude."""
+"""Keyword search without AI (`search_recipes`), run against the real Postgres database.
+Nothing is mocked: this path calls neither the embedding model nor Claude."""
 
-from django.contrib.auth.models import User
 from django.db import connection, transaction
 from django.test import TestCase
 
@@ -98,52 +96,3 @@ class TrigramIndexTests(TestCase):
 
         self.assertIn("recipe_name_trgm", plan)
         self.assertIn("recipe_ingredients_trgm", plan)
-
-
-class KeywordSearchApiTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username="alex", password="pw12345!")
-
-    def _search(self, q: str):
-        return self.client.get("/api/search", {"q": q})
-
-    def test_anonymous_user_is_rejected(self):
-        self.assertEqual(self._search("oats").status_code, 401)
-
-    def test_returns_at_most_five_results_with_elapsed_time(self):
-        self.client.force_login(self.user)
-        for i in range(7):
-            _recipe(f"Oat Bowl {i}")
-
-        response = self._search("oat")
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(len(body["results"]), 5)
-        self.assertEqual(body["query"], "oat")
-        self.assertGreaterEqual(body["elapsed_ms"], 0)
-        self.assertEqual(set(body["results"][0]), {"id", "recipe_name", "source_url", "image_url", *NUTRITION_FIELDS})
-
-    def test_no_match_returns_an_empty_list(self):
-        self.client.force_login(self.user)
-
-        body = self._search("durian").json()
-
-        self.assertEqual(body["results"], [])
-
-    def test_blank_query_is_rejected(self):
-        self.client.force_login(self.user)
-
-        for q in ("", "   "):
-            self.assertEqual(self._search(q).status_code, 400)
-
-
-NUTRITION_FIELDS = {
-    "calories_per_serving",
-    "protein_g_per_serving",
-    "carbs_g_per_serving",
-    "fat_g_per_serving",
-    "fiber_g_per_serving",
-    "sugar_g_per_serving",
-    "sodium_mg_per_serving",
-}

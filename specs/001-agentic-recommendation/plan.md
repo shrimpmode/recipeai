@@ -33,7 +33,7 @@ Each step is recorded on the query request and returned by the existing
 | III. Deep Modules and Named Patterns | Pass | `Resolver.resolve` stays the one entry point; enums for nutrient/direction/step; new terms in CONTEXT.md. |
 | IV. Scalability | Pass | Work stays on the worker; filtered search uses existing indexes (see research R2); deadline re-checked at startup with calls-per-attempt. |
 | V. Security by Default | Pass | Same owner-only endpoints; step codes, not text, cross the API; intents validated by Pydantic before use. |
-| VI. Focused Testing | Pass | Unit tests only for targets/check/widening and the flow's search behaviour; user asked to test only critical parts. |
+| VI. Focused Testing | Pass | Unit tests only for targets/check/widening and the flow's search behaviour; user asked to test only critical parts. No E2E or HTTP-level tests (constitution 2.0.0). |
 | VII. Observability and Errors | Pass | Interpreter errors classified like the picker's; `query_request_id` on logs; no prompt or goals logged. |
 | VIII. Least New Code | Pass | Reuses poll, task, retries, `build_model`, picker; no SSE, no graph library, no AI refinement. |
 
@@ -76,7 +76,7 @@ Critical units only (per the user's instruction):
 - The flow: a goal-meeting recipe wins over a closer one that misses, widening is reported, unmet targets named → `queries/tests/test_resolution.py`
 - Progress can't be written to a finished request and is cleared on a retry → `queries/tests/test_lifecycle.py`
 
-Not tested: the LLM interpreter adapter (thin, mirrors `LLMPicker`), serializers, frontend components; covered by type-check, lint, existing API tests and quickstart.md.
+Not tested: the LLM interpreter adapter (thin, mirrors `LLMPicker`), serializers, API views, frontend components; covered by type-check, lint and quickstart.md.
 
 ## Project Structure
 
@@ -92,7 +92,6 @@ config/settings.py                   AI_SEARCH_INTERPRETER; timeout 15 s
 queries/tests/fakes.py               FakeInterpreter
 frontend/src/components/search/      progress-steps.tsx; search-panel.tsx
 frontend/src/components/recipe-card.tsx   goal checks
-frontend/e2e/claude-stub/server.mjs  answers the interpreter call too
 docs/adr/0008-*.md, CONTEXT.md
 ```
 

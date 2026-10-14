@@ -42,4 +42,4 @@
 ## Phase 4: Polish
 
 - [X] T018 ADR docs/adr/0008-goal-checked-search-and-progress.md; terms in CONTEXT.md
-- [ ] T019 Review (incl. owasp-check) over the feature diff
+- [X] T019 Review (incl. owasp-check) over the feature diff

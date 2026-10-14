@@ -48,10 +48,9 @@ check before it ships; Critical and High findings block release.
 Unit tests cover domain rules, security decisions, parsers and
 calculations, and every bug fix (as a regression test), written before the
 code. Framework wiring, configuration, thin adapters, and plain data
-classes are not unit-tested. The repo already keeps Django API tests
-(`queries/tests/test_query_flow.py`) and Playwright journeys
-(`frontend/e2e/`); a feature extends those existing journeys when it changes
-them, and does not add new suites.
+classes are not unit-tested. Tests call domain and service code directly
+(the real test database is allowed); there are no end-to-end, HTTP-level or
+fake-provider-server tests.
 
 ### VII. Observability and Errors
 
@@ -78,8 +77,8 @@ Backend: Python 3, Django 5 + Django REST Framework, Postgres with pgvector,
 Celery on Redis, Pydantic AI for LLM calls (provider chosen by
 `AI_SEARCH_MODEL`), local sentence-transformers embeddings; uv, ruff,
 pyright/mypy, pytest. Frontend: Next.js (App Router) + TypeScript, typed API
-client generated from the OpenAPI schema (`pnpm gen:api`), eslint, Playwright.
-Docker Compose for local and e2e runs. Significant decisions are ADRs in
+client generated from the OpenAPI schema (`pnpm gen:api`), eslint.
+Docker Compose for local runs. Significant decisions are ADRs in
 `docs/adr/`.
 
 ## Quality Gates
@@ -98,4 +97,8 @@ Tracking. Amendments state their rationale and bump the version (MAJOR:
 principle removed or redefined, MINOR: principle added or expanded,
 PATCH: wording).
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-13 | **Last Amended**: 2026-10-13
+**Version**: 2.0.0 | **Ratified**: 2026-10-13 | **Last Amended**: 2026-10-13
+
+Amendment 2.0.0: Article VI redefined. End-to-end (Playwright) and
+HTTP-level/integration tests were removed from the repo at the owner's
+request; tests now target domain and service code only.

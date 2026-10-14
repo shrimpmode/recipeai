@@ -45,7 +45,7 @@ class ResolverTests(TestCase):
 
         self.assertEqual(self._shortlist_ids(), [near.id, middle.id, far.id])
 
-    def test_goals_rerank_the_shortlist_by_nutrition_closeness(self):
+    def test_goal_meeting_recipes_rank_first_then_the_nearest_misses(self):
         user = User.objects.create_user(username="alex", password="pw12345!")
         # Daily fiber target of 30 g -> 10 g per meal under the 3-meals-a-day assumption.
         profile = Profile.objects.create(user=user, fiber_target_g=30)
