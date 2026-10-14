@@ -133,7 +133,9 @@ search was widened).
   and prefer recipes closest to them instead; (3) drop the request's
   nutrients as limits and prefer recipes that best meet them. Nutrients the
   user asked for are given up last. Widening never discards recipes that
-  met more targets in favour of ones that met fewer.
+  met more targets in favour of ones that met fewer; between two recipes,
+  the one meeting more of the request's own nutrients ranks first, then the
+  one meeting more targets overall.
 - **FR-005**: Each final recipe MUST come with a short explanation of why
   it fits the request and how it compares to the targets; when a target
   is not met by any returned recipe, the result MUST say which one.
@@ -234,3 +236,9 @@ search was widened).
   widening order replaces AI-refined search rounds. This supersedes the
   previous answer's "AI rewrites the search on refinement" (FR-001a,
   FR-003, FR-004, SC-005).
+
+### Session 2026-10-14
+
+- Q: FR-004 said both "request nutrients are given up last" and "never rank
+  fewer targets met above more"; which wins when they conflict? → A: The
+  request's own nutrients rank first, then targets met overall (FR-004).

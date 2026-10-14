@@ -145,11 +145,13 @@ def check(values: Mapping[Nutrient, float | None], targets: Sequence[NutritionTa
     )
 
 
-def rank_key(values: Mapping[Nutrient, float | None], targets: Sequence[NutritionTarget]) -> tuple[int, float]:
-    """Sort key, lower first: more targets met, then a smaller shortfall from the unmet ones.
-    Recipes meeting the same targets tie, so a stable sort keeps their similarity order."""
+def rank_key(values: Mapping[Nutrient, float | None], targets: Sequence[NutritionTarget]) -> tuple[int, int, float]:
+    """Sort key, lower first: more of the request's own nutrients met (they're given up last), then
+    more targets met overall, then a smaller shortfall from the unmet ones. Recipes meeting the
+    same targets tie, so a stable sort keeps their similarity order."""
     unmet = [t for t in targets if not is_met(t, values.get(t.nutrient), STRICT)]
-    return -(len(targets) - len(unmet)), sum(_shortfall(t, values.get(t.nutrient)) for t in unmet)
+    asked_unmet = sum(t.source is Source.REQUEST for t in unmet)
+    return asked_unmet, len(unmet), sum(_shortfall(t, values.get(t.nutrient)) for t in unmet)
 
 
 def widening_levels(targets: Sequence[NutritionTarget]) -> tuple[SearchLevel, ...]:

@@ -404,7 +404,7 @@
     <li>
       <strong>Search, widening if needed.</strong> It fetches the 15 recipes nearest by cosine distance among those meeting every
       target. While fewer than 5 have been found, it searches again with looser limits: goals at ±40%, then goals dropped, then
-      no limits. Recipes from every search are pooled and ranked by targets met, so widening never loses a better recipe; the top 5 form the shortlist.
+      no limits. Recipes from every search are pooled and ranked by the request's own nutrients met, then targets met overall, so widening never loses a better recipe; the top 5 form the shortlist.
       <div class="where">queries/services/retrieval.py · search_level · queries/services/targets.py · widening_levels, rank_key</div>
     </li>
     <li>
