@@ -136,3 +136,25 @@ class GoalCheckedResolutionTests(TestCase):
 
         self.assertEqual(self.steps, [Step.UNDERSTANDING, Step.SEARCHING, Step.CHOOSING])
         self.assertTrue(all(r["goal_checks"] == [] for r in resolution.results))
+
+
+class OffTopicResolutionTests(TestCase):
+    """A clearly off-topic request ends after understanding it (specs/002-off-topic-requests)."""
+
+    def test_an_off_topic_request_stops_before_any_search_or_pick(self):
+        make_recipe(recipe_name="Never searched")
+        picker, steps = FakePicker(), list[Step]()
+        resolver = Resolver(
+            interpreter=FakeInterpreter(on_topic=False),
+            embedder=FakeEmbedder(),
+            picker=picker,
+            candidate_count=15,
+            shortlist_size=5,
+            result_count=3,
+        )
+
+        resolution = resolver.resolve("write me a poem about the sea", None, steps.append)
+
+        self.assertEqual(steps, [Step.UNDERSTANDING])
+        self.assertEqual(picker.shortlists, [])
+        self.assertEqual((resolution.results, resolution.off_topic), ([], True))

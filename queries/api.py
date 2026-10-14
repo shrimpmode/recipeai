@@ -57,6 +57,8 @@ class QueryOutSerializer(serializers.Serializer):
     progress = serializers.ListField(child=serializers.ChoiceField(choices=[s.value for s in Step]))
     # Nutrients none of the results meets (done only).
     unmet_targets = serializers.ListField(child=serializers.ChoiceField(choices=NUTRIENT_CHOICES))
+    # Done with no results: the request was clearly not about food (specs/002-off-topic-requests).
+    off_topic = serializers.BooleanField()
     # Set once the request is finished (done or error): submit-to-finish time, queueing included.
     elapsed_seconds = serializers.FloatField(allow_null=True)
     created_at = serializers.DateTimeField()
@@ -73,6 +75,7 @@ def _query_out(query_request: QueryRequest) -> dict:
             "results": query_request.results if query_request.status == QueryRequest.Status.DONE else None,
             "progress": query_request.progress,
             "unmet_targets": query_request.unmet_targets,
+            "off_topic": query_request.off_topic,
             "elapsed_seconds": query_request.elapsed_seconds,
             "created_at": query_request.created_at,
             "expires_at": query_request.deadline,

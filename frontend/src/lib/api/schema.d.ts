@@ -226,6 +226,7 @@ export interface components {
             results: components["schemas"]["ResultOut"][] | null;
             progress: components["schemas"]["ProgressEnum"][];
             unmet_targets: components["schemas"]["Nutrient"][];
+            off_topic: boolean;
             /** Format: double */
             elapsed_seconds: number | null;
             /** Format: date-time */

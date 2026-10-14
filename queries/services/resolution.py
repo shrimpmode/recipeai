@@ -10,6 +10,9 @@ as it starts (`Step`), so the page can show progress:
 3. check: each shortlisted recipe against each target (skipped with no targets);
 4. choose: a picker chooses and describes the final few.
 
+A request the interpreter finds clearly off topic stops after step 1, with no
+results (specs/002-off-topic-requests).
+
 The order is code, not the model's choice: only steps 1 and 4 call an LLM
 (`AI_CALLS_PER_ATTEMPT`). The collaborators that are slow, paid or heavy sit
 behind seams, each with two adapters:
@@ -78,12 +81,15 @@ StepReporter = Callable[[Step], object]  # any return value is ignored
 class Interpretation(BaseModel, frozen=True):
     search_phrase: str = Field(min_length=1, max_length=300, description="What to search the recipes for")
     intents: list[NutrientIntent] = Field(default_factory=list, description="Nutrients the user asks to be high or low")
+    # Defaults to True so an answer without it fails open: wrongly refusing a food request is the worse mistake.
+    on_topic: bool = Field(default=True, description="False only if the request is clearly not about food or nutrition")
 
 
 @dataclass(frozen=True)
 class Resolution:
     results: list[dict[str, Any]]  # the shape stored in `QueryRequest.results`
     unmet_targets: list[str]  # nutrients none of the results meets
+    off_topic: bool = False  # declined after understanding: no search, no results
 
 
 @dataclass(frozen=True)
@@ -134,6 +140,8 @@ class Resolver:
     def resolve(self, prompt: str, profile: Profile | None, report: StepReporter = _ignore_step) -> Resolution:
         report(Step.UNDERSTANDING)
         interpretation = self.interpreter.interpret(prompt)
+        if not interpretation.on_topic:
+            return Resolution([], [], off_topic=True)
         targets = merge_targets(_daily_goals(profile), interpretation.intents)
         query_embedding = self.embedder.embed_query(interpretation.search_phrase)
 

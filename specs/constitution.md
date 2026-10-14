@@ -50,7 +50,10 @@ calculations, and every bug fix (as a regression test), written before the
 code. Framework wiring, configuration, thin adapters, and plain data
 classes are not unit-tested. Tests call domain and service code directly
 (the real test database is allowed); there are no end-to-end, HTTP-level or
-fake-provider-server tests.
+fake-provider-server tests. Model behaviour is measured by evals: management
+commands that call the real model with labelled prompts and fail below the
+spec's thresholds. They run on demand (when a prompt or the model changes),
+never in the unit suite.
 
 ### VII. Observability and Errors
 
@@ -97,8 +100,10 @@ Tracking. Amendments state their rationale and bump the version (MAJOR:
 principle removed or redefined, MINOR: principle added or expanded,
 PATCH: wording).
 
-**Version**: 2.0.0 | **Ratified**: 2026-10-13 | **Last Amended**: 2026-10-13
+**Version**: 2.1.0 | **Ratified**: 2026-10-13 | **Last Amended**: 2026-10-14
 
 Amendment 2.0.0: Article VI redefined. End-to-end (Playwright) and
 HTTP-level/integration tests were removed from the repo at the owner's
 request; tests now target domain and service code only.
+
+Amendment 2.1.0: Article VI expanded with on-demand model evals.

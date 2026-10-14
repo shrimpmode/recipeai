@@ -10,6 +10,7 @@ Terms used in code, ADRs and reviews. Keep them consistent.
 - **AI search resolution**: the module that turns a prompt and goals into results (`queries/services/resolution.py`, `Resolver`). A fixed flow of steps: understand, search, widen (when needed), check, choose (ADR 0008).
 - **Step**: one stage of that flow, recorded on the query request as it starts (`progress`) so the page can show it (`Step`).
 - **Interpreter**: turns the prompt into a search phrase and the nutrients it asks for (`RequestInterpreter`; in production `LLMInterpreter`).
+- **Off-topic request**: one the interpreter finds clearly not about food or nutrition (`Interpretation.on_topic` false). It ends after understanding, as `done` with no results and `off_topic` set; when unsure, a request is on topic (specs/002-off-topic-requests).
 - **Nutrition target**: one nutrient a request's recipes must meet, per meal, from the user's goals or named in the request; the request wins (`queries/services/targets.py`).
 - **Widening**: loosening the search's target limits in a fixed order (goals loosened, goals dropped, all dropped) while too few recipes match (`widening_levels`).
 - **Goal check**: how one result compares to one target: target, value, met or not (`goal_checks` on each result). **Unmet targets**: the nutrients none of the results meets.

@@ -78,7 +78,9 @@ _interpreter = Agent(
         "only nutrients (calories, protein, carbs, fat, fiber) the user explicitly wants high "
         "(at_least) or low (at_most), e.g. 'high fiber', 'low carb', 'light' (calories at_most). "
         "Set amount only when the user states one for this meal (e.g. 'at least 30 g protein' -> 30); "
-        "calories in kcal, the rest in grams. No nutrient mentioned means no intents."
+        "calories in kcal, the rest in grams. No nutrient mentioned means no intents. "
+        "Set on_topic false only when the request is clearly not about food, meals, recipes or "
+        "nutrition (e.g. 'write me a poem'); vague or emotional food requests are on topic; when unsure, true."
     ),
     model_settings={"max_tokens": 512},
 )

@@ -532,6 +532,9 @@
                             "$ref": "#/components/schemas/Nutrient"
                         }
                     },
+                    "off_topic": {
+                        "type": "boolean"
+                    },
                     "elapsed_seconds": {
                         "type": "number",
                         "format": "double",
@@ -551,6 +554,7 @@
                     "elapsed_seconds",
                     "expires_at",
                     "id",
+                    "off_topic",
                     "progress",
                     "results",
                     "status",

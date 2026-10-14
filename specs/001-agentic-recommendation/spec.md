@@ -89,7 +89,8 @@ search was widened).
 ### Edge Cases
 
 - A request unrelated to nutrition or food ("what's the weather"): the user
-  gets 3 recipes closest to the request, as today.
+  gets 3 recipes closest to the request, as today. *Superseded by
+  `specs/002-off-topic-requests`: clearly off-topic requests are declined.*
 - A request that contradicts a goal ("low carb" with a high carb goal):
   the request's target replaces the goal's for that nutrient.
 - Goals that conflict with the request (a 300 kcal/day target and "a hearty

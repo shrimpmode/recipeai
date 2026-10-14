@@ -78,10 +78,11 @@ def _resolve_query(self: Task, query_request_id: int) -> None:
         logger.warning("query_attempt_failed", exc_info=True, extra=log_context | {"retry_in_s": round(delay, 1)})
         raise self.retry(exc=exc, countdown=delay) from exc
 
-    if not query_request.succeed(resolution.results, resolution.unmet_targets):
+    if not query_request.succeed(resolution.results, resolution.unmet_targets, resolution.off_topic):
         _log_already_ended(query_request, log_context, discarded_results=True)
         return
-    logger.info("query_resolution_succeeded", extra=log_context | {"duration_ms": _elapsed_ms(started)})
+    event = "query_declined_off_topic" if resolution.off_topic else "query_resolution_succeeded"
+    logger.info(event, extra=log_context | {"duration_ms": _elapsed_ms(started)})
 
 
 # shared_task is unannotated, and with arguments Pyright infers nonsense for it; state the type.

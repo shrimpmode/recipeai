@@ -11,10 +11,13 @@ from queries.services.resolution import Interpretation, Pick
 
 
 class FakeInterpreter:
-    """Searches for the prompt as written and reads no nutrients from it."""
+    """Searches for the prompt as written, reads no nutrients from it, and finds it on topic unless told otherwise."""
+
+    def __init__(self, on_topic: bool = True) -> None:
+        self.on_topic = on_topic
 
     def interpret(self, prompt: str) -> Interpretation:
-        return Interpretation(search_phrase=prompt)
+        return Interpretation(search_phrase=prompt, on_topic=self.on_topic)
 
 
 class FakeEmbedder:
