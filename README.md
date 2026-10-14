@@ -112,4 +112,10 @@ POSTGRES_HOST=localhost uv run python manage.py migrate
 POSTGRES_HOST=localhost uv run python manage.py test
 ```
 
+Evals call the real model (needs the provider's API key, costs a few cents) and stay out of the test suite. Run them when an AI prompt or `AI_SEARCH_MODEL` changes:
+
+```
+docker compose exec worker python manage.py eval_interpreter   # off-topic vs food prompts (spec 002, SC-003)
+```
+
 Tests need a real Postgres with the `pgvector` extension (via `docker compose up -d db`) since recipe embeddings use a `VectorField`; the LLM provider is faked in tests (fake adapters, and local HTTP servers standing in for the Anthropic and OpenAI APIs) (embeddings run locally via sentence-transformers), so no API keys are required to run the suite.

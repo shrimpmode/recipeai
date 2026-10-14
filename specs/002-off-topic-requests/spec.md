@@ -70,7 +70,7 @@ the message after the first step and no recipe cards. Submit "I'm starving";
 - **SC-002**: An off-topic request costs 1 AI call per attempt.
 - **SC-003**: On a fixed sample set, at least 90% of clearly off-topic
   requests are declined and at most 2% of food requests are wrongly
-  declined.
+  declined (measured by an on-demand eval against the real AI).
 
 ## Assumptions
 

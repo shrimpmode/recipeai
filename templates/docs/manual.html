@@ -991,7 +991,8 @@ POSTGRES_HOST=localhost uv run python manage.py test
 
 cd frontend
 pnpm lint &amp;&amp; pnpm typecheck                <span class="c"># frontend checks</span>
-pnpm gen:api                              <span class="c"># after an API change: regenerate the typed client</span></code></pre>
+pnpm gen:api                              <span class="c"># after an API change: regenerate the typed client</span>
+docker compose exec worker python manage.py eval_interpreter  <span class="c"># real-model eval: off-topic vs food prompts</span></code></pre>
   <div class="cards">
     <div class="card"><h5>Real database in tests</h5><p>Tests run against the real pgvector container: the merge SQL, <code>COPY</code>, the advisory lock and the HNSW index are all tested against Postgres itself.</p></div>
     <div class="card"><h5>Fakes only at the edges</h5><p>Nothing is patched by import path. The backfill takes an <code>Embedder</code>, and AI search's adapters are passed to the resolver, so tests use <code>queries/tests/fakes.py</code>. No end-to-end or HTTP-level tests: the suite covers domain and service code.</p></div>

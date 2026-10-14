@@ -24,3 +24,7 @@
 
 - [X] T009 "Off-topic request" in CONTEXT.md; Understand and Poll steps in templates/docs/manual.html; supersede note in specs/001-agentic-recommendation/spec.md
 - [X] T010 Review (incl. owasp-check) over the feature diff
+
+## Phase 3: Convergence
+
+- [X] T011 SC-003 measured by hand only (partial): `eval_interpreter` command in queries/management/commands/eval_interpreter.py; constitution 2.1.0 allows on-demand evals

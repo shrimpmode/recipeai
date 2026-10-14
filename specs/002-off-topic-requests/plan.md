@@ -42,6 +42,8 @@ Unchanged from 001 (Django 5.1 + DRF, Celery, Pydantic AI 2.54, Postgres + pgvec
 
 - `queries/tests/test_resolution.py`: an off-topic interpretation reports only the understanding step, never calls the picker, and returns no results with `off_topic=True`.
 
+Eval (constitution 2.1.0): `manage.py eval_interpreter` runs 10 off-topic and 20 food prompts against the real model and fails below SC-003. On demand, not in the unit suite.
+
 Not tested: serializer, migration, frontend message (type-check, lint, quickstart).
 
 ## Requirement Coverage
@@ -53,4 +55,4 @@ Not tested: serializer, migration, frontend message (type-check, lint, quickstar
 | FR-004 | `search-panel.tsx` results view; `succeed` (done, not error) |
 | FR-006 | unchanged owner filter in `QueryStatusView` |
 | SC-001, SC-002 | no new calls; early return skips the picker |
-| SC-003 | quickstart sample run |
+| SC-003 | `eval_interpreter` command |
