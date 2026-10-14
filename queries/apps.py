@@ -10,7 +10,7 @@ class QueriesConfig(AppConfig):
 
     def ready(self) -> None:
         # A typo in an adapter path should stop startup, not fail the first AI search.
-        for name in ("AI_SEARCH_EMBEDDER", "AI_SEARCH_PICKER"):
+        for name in ("AI_SEARCH_INTERPRETER", "AI_SEARCH_EMBEDDER", "AI_SEARCH_PICKER"):
             try:
                 import_string(getattr(settings, name))
             except ImportError as exc:
@@ -24,6 +24,6 @@ class QueriesConfig(AppConfig):
         if worst_case_seconds() > settings.QUERY_DEADLINE_SECONDS:
             raise ImproperlyConfigured(
                 f"QUERY_DEADLINE_SECONDS ({settings.QUERY_DEADLINE_SECONDS:g}) must be at least the retry "
-                f"worst case ({worst_case_seconds():g} s: attempts * model timeout + backoff)"
+                f"worst case ({worst_case_seconds():g} s: attempts * model calls * model timeout + backoff)"
             )
         from queries.services import resolution  # noqa: F401  (connects its setting_changed receiver)

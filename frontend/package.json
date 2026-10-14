@@ -8,8 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "gen:api": "cd .. && uv run python manage.py spectacular --format openapi-json --validate --fail-on-warn --file frontend/src/lib/api/openapi.json && cd frontend && openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts",
-    "test:e2e": "playwright test"
+    "gen:api": "cd .. && uv run python manage.py spectacular --format openapi-json --validate --fail-on-warn --file frontend/src/lib/api/openapi.json && cd frontend && openapi-typescript src/lib/api/openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {
     "next": "16.4.0",
@@ -18,7 +17,6 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

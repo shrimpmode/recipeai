@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api, ensureCsrfCookie } from "@/lib/api/client";
-import type { AiRecipe, KeywordRecipe, QueryResult } from "@/lib/api/types";
+import type { AiRecipe, KeywordRecipe, Nutrient, QueryResult, SearchStep } from "@/lib/api/types";
 import { formatDuration } from "@/lib/format";
 
 import { RecipeCard, type RecipeCardData } from "../recipe-card";
 import { inputClass, primaryButtonClass } from "../ui";
 import { LiveTimer } from "./live-timer";
 import { ModeSwitch, type SearchMode } from "./mode-switch";
+import { ProgressSteps } from "./progress-steps";
 
 const POLL_INTERVAL_MS = 1000;
 // The server ends every AI search by its expires_at, so polling until done or error terminates.
@@ -31,8 +32,15 @@ const COPY = {
 
 type View =
   | { kind: "idle" }
-  | { kind: "searching"; mode: SearchMode; startedAt: number }
-  | { kind: "results"; mode: SearchMode; query: string; recipes: RecipeCardData[]; elapsedMs: number }
+  | { kind: "searching"; mode: SearchMode; startedAt: number; steps: SearchStep[] }
+  | {
+      kind: "results";
+      mode: SearchMode;
+      query: string;
+      recipes: RecipeCardData[];
+      elapsedMs: number;
+      unmetTargets: Nutrient[];
+    }
   | { kind: "error"; message: string };
 
 class SearchFailed extends Error {}
@@ -54,7 +62,11 @@ function fromKeyword(recipe: KeywordRecipe): RecipeCardData {
 }
 
 function fromAi(recipe: AiRecipe): RecipeCardData {
-  return { ...fromKeyword({ ...recipe, id: recipe.recipe_id }), description: recipe.description };
+  return {
+    ...fromKeyword({ ...recipe, id: recipe.recipe_id }),
+    description: recipe.description,
+    goalChecks: recipe.goal_checks ?? [],
+  };
 }
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -74,10 +86,10 @@ export function SearchPanel() {
   async function keywordSearch(q: string) {
     const { data } = await api.GET("/api/search", { params: { query: { q } } });
     if (!data) throw new SearchFailed("Search failed. Try again.");
-    return { recipes: data.results.map(fromKeyword), elapsedMs: data.elapsed_ms };
+    return { recipes: data.results.map(fromKeyword), elapsedMs: data.elapsed_ms, unmetTargets: [] };
   }
 
-  async function aiSearch(prompt: string, myTicket: number) {
+  async function aiSearch(prompt: string, myTicket: number, startedAt: number) {
     await ensureCsrfCookie();
     const submitted = await api.POST("/api/queries", { body: { prompt } });
     if (!submitted.data) throw new SearchFailed("Couldn’t start the search. Try again.");
@@ -95,11 +107,17 @@ export function SearchPanel() {
       });
       if (!polled.data) throw new SearchFailed("Lost track of the search. Try again.");
       query = polled.data;
+      const steps = query.progress;
+      if (ticket.current === myTicket) setView({ kind: "searching", mode: "ai", startedAt, steps });
     }
     if (query.status === "error" || !query.results) {
       throw new SearchFailed("Something went wrong finding recipes for that request. Please try again.");
     }
-    return { recipes: query.results.map(fromAi), elapsedMs: (query.elapsed_seconds ?? 0) * 1000 };
+    return {
+      recipes: query.results.map(fromAi),
+      elapsedMs: (query.elapsed_seconds ?? 0) * 1000,
+      unmetTargets: query.unmet_targets,
+    };
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -109,9 +127,10 @@ export function SearchPanel() {
 
     const myTicket = ++ticket.current;
     const searchMode = mode;
-    setView({ kind: "searching", mode: searchMode, startedAt: performance.now() });
+    const startedAt = performance.now();
+    setView({ kind: "searching", mode: searchMode, startedAt, steps: [] });
     try {
-      const outcome = searchMode === "ai" ? await aiSearch(text, myTicket) : await keywordSearch(text);
+      const outcome = searchMode === "ai" ? await aiSearch(text, myTicket, startedAt) : await keywordSearch(text);
       if (outcome && ticket.current === myTicket) {
         setView({ kind: "results", mode: searchMode, query: text, ...outcome });
       }
@@ -160,6 +179,7 @@ function SearchOutcome({ view }: { view: View }) {
     case "idle":
       return null;
     case "searching":
+      if (view.steps.length > 0) return <ProgressSteps steps={view.steps} startedAt={view.startedAt} />;
       return (
         <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-5 py-4 text-muted">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -193,6 +213,12 @@ function Results({ view }: { view: Extract<View, { kind: "results" }> }) {
           {summary}
         </p>
       </div>
+      {view.unmetTargets.length > 0 && (
+        <p className="mb-4 rounded-2xl border border-line bg-surface px-5 py-3 text-sm text-muted">
+          None of these fully meet your {listNutrients(view.unmetTargets)} target
+          {view.unmetTargets.length === 1 ? "" : "s"}; they’re the closest recipes we found.
+        </p>
+      )}
       {count === 0 ? (
         <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-muted">
           No recipes have “{view.query}” in their name or ingredients.
@@ -206,4 +232,9 @@ function Results({ view }: { view: Extract<View, { kind: "results" }> }) {
       )}
     </div>
   );
+}
+
+function listNutrients(nutrients: Nutrient[]): string {
+  const names = nutrients.map((n) => (n === "calories" ? "calorie" : n));
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }

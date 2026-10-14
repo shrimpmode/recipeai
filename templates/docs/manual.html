@@ -253,12 +253,13 @@
   <h2><span class="num">01</span>Overview</h2>
   <p>
     The app is a small retrieval-augmented generation (RAG) system over a catalogue of recipes with nutrition data.
-    A logged-in user types a request in plain language. The app then works in three stages:
+    A logged-in user types a request in plain language. The app then works in a fixed order of steps, shown live on the page:
   </p>
   <ol>
-    <li><strong>Retrieve.</strong> It embeds the request with a local sentence-transformers model and pulls the 15 nearest recipes from Postgres using pgvector.</li>
-    <li><strong>Re-rank.</strong> If the user has set daily nutrition goals, it narrows those 15 down to the 5 whose per-serving nutrition best fits one meal's share of the day.</li>
-    <li><strong>Generate.</strong> It asks Claude to pick the best 3 of the shortlist and write a one- or two-sentence reason for each.</li>
+    <li><strong>Understand.</strong> Claude reads a search phrase and any nutrients the request asks for ("high fiber"). Those are merged with the user's daily goals into per-meal nutrition targets; the request wins for a nutrient both cover.</li>
+    <li><strong>Search.</strong> It embeds the phrase with a local sentence-transformers model and pulls the recipes nearest to it from Postgres using pgvector, counting only recipes that meet every target. If fewer than 5 do, it widens the search in a fixed order: goals loosened, goals dropped, all limits dropped.</li>
+    <li><strong>Check.</strong> Each shortlisted recipe is compared to each target (met or not), in plain code.</li>
+    <li><strong>Generate.</strong> Claude picks the best 3 of the shortlist and writes a one- or two-sentence reason for each, saying how it fits the targets.</li>
   </ol>
   <p>
     Claude can only choose from recipes the database returned. Any recipe ID outside the shortlist is discarded, so the
@@ -270,7 +271,7 @@
     <div class="stat"><div class="v">384</div><div class="l">embedding dimensions</div></div>
     <div class="stat"><div class="v">~1.9 ms</div><div class="l">kNN query via HNSW</div></div>
     <div class="stat"><div class="v">0.997</div><div class="l">recall@15 vs exact scan</div></div>
-    <div class="stat"><div class="v">15 → 5 → 3</div><div class="l">candidates → reranked → results</div></div>
+    <div class="stat"><div class="v">15 → 5 → 3</div><div class="l">candidates → shortlist → results</div></div>
   </div>
   <p class="caption">Figures measured on the dev stack after the first full load (see <a href="#pipeline">§5</a>).</p>
 </section>
@@ -389,30 +390,37 @@
       <div class="where">queries/tasks.py · resolve_query</div>
     </li>
     <li>
-      <strong>Embed the prompt.</strong> The worker turns the prompt into a 384-dimension vector, in-process, with no network call.
+      <strong>Understand.</strong> The model named by <code>AI_SEARCH_MODEL</code> returns a search phrase and the nutrients the
+      prompt asks to be high or low, validated by Pydantic. These are merged with the user's goals into per-meal targets
+      (a third of each daily goal): protein and fiber are minimums, calories, carbs and fat are bands (±20%).
+      <div class="where">RequestInterpreter seam · queries/services/generation.py · LLMInterpreter · queries/services/targets.py · merge_targets</div>
+    </li>
+    <li>
+      <strong>Embed the phrase.</strong> The worker turns the search phrase into a 384-dimension vector, in-process, with no network call.
       <div class="where">QueryEmbedder seam · recipes/services/embeddings.py · LocalEmbedder.embed_query</div>
     </li>
     <li>
-      <strong>Retrieve.</strong> It fetches the 15 recipes nearest to the prompt by cosine distance, skipping recipes that have no embedding yet. The HNSW index serves this query.
-      <div class="where">queries/services/retrieval.py · retrieve_by_similarity</div>
+      <strong>Search, widening if needed.</strong> It fetches the 15 recipes nearest by cosine distance among those meeting every
+      target. While fewer than 5 have been found, it searches again with looser limits: goals at ±40%, then goals dropped, then
+      no limits. Recipes from every search are pooled and ranked by targets met, so widening never loses a better recipe; the top 5 form the shortlist.
+      <div class="where">queries/services/retrieval.py · search_level · queries/services/targets.py · widening_levels, rank_key</div>
     </li>
     <li>
-      <strong>Re-rank (only if the user has goals).</strong> Each daily target is divided by 3 to get one meal's share. Each
-      candidate gets the mean relative deviation from those targets, and the 5 closest are kept. Without goals, the top 5 by
-      similarity are kept.
-      <div class="where">queries/services/retrieval.py · rerank_by_goals</div>
+      <strong>Check (only with targets).</strong> Each shortlisted recipe gets a goal check per target: target, value, met or not.
+      <div class="where">queries/services/targets.py · check</div>
     </li>
     <li>
       <strong>Pick.</strong> The worker sends the shortlist as JSON to the model named by <code>AI_SEARCH_MODEL</code>
       (Claude Haiku by default) through Pydantic AI, which returns <code>[{recipe_id, description}]</code> via a structured-output
       tool and validates it; an answer that fails validation is a retryable failure. Any ID that was not in the shortlist, or repeats, is dropped and logged
       (<code>pick_discarded</code>); fewer than 3 usable picks is a retryable failure. Each call is limited to
-      <code>AI_SEARCH_MODEL_TIMEOUT_SECONDS</code> (30 s), with the SDK's and Pydantic AI's own retries off.
+      <code>AI_SEARCH_MODEL_TIMEOUT_SECONDS</code> (15 s), with the SDK's and Pydantic AI's own retries off.
       <div class="where">RecipePicker seam · queries/services/generation.py · LLMPicker.pick · providers in model_providers.py</div>
     </li>
     <li>
-      <strong>Persist or retry.</strong> On success, the worker writes exactly 3 results to <code>QueryRequest.results</code> and sets
-      status <code>done</code>. A permanent failure (the provider answers 400, 401, 403 or another 4xx except 408, 409 and 429, or its API key is not set) sets
+      <strong>Persist or retry.</strong> On success, the worker writes exactly 3 results (each with its <code>goal_checks</code>) to
+      <code>QueryRequest.results</code>, the targets none of them meets to <code>unmet_targets</code>, and sets status <code>done</code>.
+      Each step above is recorded in <code>QueryRequest.progress</code> as it starts; a retry starts it over. A permanent failure (the provider answers 400, 401, 403 or another 4xx except 408, 409 and 429, or its API key is not set) sets
       status <code>error</code> at once. Any other failure re-queues the task up to <code>QUERY_TASK_MAX_RETRIES</code> times,
       with backoff of about 2, 4 and 8 s plus jitter. The worker is free while it waits, and a pending retry survives a
       worker restart. A retry that would start after the request's deadline isn't queued; the request fails at once.
@@ -421,7 +429,7 @@
       <div class="where">queries/tasks.py · queries/models.py (start, succeed, fail, expire_if_overdue)</div>
     </li>
     <li>
-      <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the results once done, and
+      <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the steps started so far (<code>progress</code>, which the page shows as a list), the results and <code>unmet_targets</code> once done, and
       <code>elapsed_seconds</code> once finished, plus <code>created_at</code> and <code>expires_at</code>. A request past its deadline
       is ended as an error before the answer is sent, so a request whose worker died still finishes. The provider's error text is logged but never returned. It is scoped to the owner,
       so asking for another user's request returns 404.
@@ -430,10 +438,10 @@
   </ol>
 
   <div class="callout">
-    <p><strong>Worst case and deadline.</strong> Four attempts that each time out at 30 s, plus up to 14 s of backoff, take
-    134 s. Each request's deadline (<code>QUERY_DEADLINE_SECONDS</code>, 150 s, stamped as <code>expires_at</code> at submit) must
+    <p><strong>Worst case and deadline.</strong> Four attempts, each making two model calls that time out at 15 s, plus up to 14 s
+    of backoff, take 134 s. Each request's deadline (<code>QUERY_DEADLINE_SECONDS</code>, 150 s, stamped as <code>expires_at</code> at submit) must
     cover that, which is checked at startup. Past the deadline the server ends the request as an error, so the frontend
-    just polls until done or error. ADR 0005 records the retry policy; ADR 0007 the lifecycle and deadline.</p>
+    just polls until done or error. ADR 0005 records the retry policy; ADR 0007 the lifecycle and deadline; ADR 0008 the goal-checked flow.</p>
   </div>
 
   <h3 id="keyword-search">Keyword search (no AI)</h3>
@@ -499,8 +507,7 @@
       <div class="tag"><span class="pill teal">frontend</span></div>
       <h5>Next.js UI</h5>
       <p>Login, search (AI and keyword) and goals pages. <code>src/lib/api</code> is a client typed from the API's OpenAPI
-      schema (<code>pnpm gen:api</code>), and <code>src/proxy.ts</code> sends visitors without a session to <code>/login</code>.
-      Playwright E2E tests are in <code>e2e/</code>.</p>
+      schema (<code>pnpm gen:api</code>), and <code>src/proxy.ts</code> sends visitors without a session to <code>/login</code>.</p>
     </div>
   </div>
 </section>
@@ -745,10 +752,12 @@ breakfast. cereals. 380 kcal, 14 g protein, 9 g fiber, 55 g carbs, 11 g fat per 
   </p>
 
   <h3 id="vector-query">Query path</h3>
-  <p>The ORM call in <code>retrieve_by_similarity</code> compiles to:</p>
-<pre><code><span class="k">SELECT</span> *
+  <p>The ORM call in <code>search_level</code> compiles to (here with a fiber target of 10 g per meal):</p>
+<pre><code><span class="k">SET LOCAL</span> hnsw.iterative_scan = strict_order;
+<span class="k">SELECT</span> *
   <span class="k">FROM</span> recipes_recipe
  <span class="k">WHERE</span> embedding <span class="k">IS NOT NULL</span>
+   <span class="k">AND</span> fiber_g_per_serving &gt;= <span class="s">8.0</span>
  <span class="k">ORDER BY</span> embedding &lt;=&gt; <span class="s">$1::vector(384)</span>
  <span class="k">LIMIT</span> <span class="s">15</span>;</code></pre>
   <p>Check that the index is used with <code>EXPLAIN</code>. Look for an <code>Index Scan using recipe_embedding_hnsw</code> line:</p>
@@ -757,9 +766,8 @@ breakfast. cereals. 380 kcal, 14 g protein, 9 g fiber, 55 g carbs, 11 g fat per 
   <div class="callout info">
     <p><strong>Filtered search with HNSW.</strong>
     HNSW applies a WHERE clause <em>after</em> it walks the graph, so a selective filter can leave you with fewer than
-    <code>LIMIT</code> rows. Our current filter, <code>IS NOT NULL</code>, is free because NULL vectors are never in the
-    index. If you add selective filters such as <code>health_labels ? 'Vegan'</code>, turn on pgvector 0.8's
-    <code>SET hnsw.iterative_scan = relaxed_order</code>, or raise <code>hnsw.ef_search</code>.</p>
+    <code>LIMIT</code> rows. The nutrient targets are such filters, so every search sets pgvector 0.8's
+    <code>hnsw.iterative_scan = strict_order</code> for its transaction: the index keeps scanning until enough rows pass.</p>
   </div>
 
   <h3 id="vector-lifecycle">Embedding lifecycle</h3>
@@ -933,7 +941,7 @@ docker compose run --rm worker python manage.py migrate                   <span 
     <tbody>
       <tr><td><code>AI_SEARCH_MODEL</code></td><td><code>anthropic:claude-haiku-4-5-20251001</code></td><td>The LLM that picks and describes AI search results, as <code>provider:model</code>. Providers: <code>anthropic</code>, <code>openai</code> (also OpenAI-compatible endpoints via <code>OPENAI_BASE_URL</code>). A malformed value or unknown provider stops the app from starting.</td></tr>
       <tr><td><code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code></td><td>—</td><td>The key for <code>AI_SEARCH_MODEL</code>'s provider is required for AI search. If it is missing or invalid, every query ends in <code>error</code> on its first attempt.</td></tr>
-      <tr><td><code>AI_SEARCH_MODEL_TIMEOUT_SECONDS</code></td><td><code>30</code></td><td>Limit for one model call.</td></tr>
+      <tr><td><code>AI_SEARCH_MODEL_TIMEOUT_SECONDS</code></td><td><code>15</code></td><td>Limit for one model call (two per attempt).</td></tr>
       <tr><td><code>POSTGRES_DB / USER / PASSWORD / HOST / PORT</code></td><td>nutrition / … / db / 5432</td><td>Database connection.</td></tr>
       <tr><td><code>REDIS_URL</code></td><td><code>redis://localhost:6379/0</code></td><td>Celery broker and result backend.</td></tr>
       <tr><td><code>LOG_LEVEL</code></td><td><code>INFO</code></td><td>Checked at startup; an invalid value stops the app from starting.</td></tr>
@@ -944,7 +952,7 @@ docker compose run --rm worker python manage.py migrate                   <span 
   <p>Tuning settings that are fixed in <code>settings.py</code>: <code>RETRIEVAL_CANDIDATE_COUNT=15</code>,
   <code>RETRIEVAL_RERANKED_COUNT=5</code>, <code>RESULT_COUNT=3</code>, <code>QUERY_TASK_MAX_RETRIES=3</code>,
   <code>QUERY_RETRY_BACKOFF_SECONDS=2</code>, <code>QUERY_DEADLINE_SECONDS=150</code> (env; checked at startup), and the adapters
-  <code>AI_SEARCH_EMBEDDER</code> / <code>AI_SEARCH_PICKER</code> (checked at startup).</p>
+  <code>AI_SEARCH_INTERPRETER</code> / <code>AI_SEARCH_EMBEDDER</code> / <code>AI_SEARCH_PICKER</code> (checked at startup).</p>
 
   <h3>Logs</h3>
   <p>
@@ -981,11 +989,10 @@ POSTGRES_HOST=localhost uv run python manage.py test
 
 cd frontend
 pnpm lint &amp;&amp; pnpm typecheck                <span class="c"># frontend checks</span>
-pnpm gen:api                              <span class="c"># after an API change: regenerate the typed client</span>
-pnpm test:e2e                             <span class="c"># Playwright; start the stack with docker-compose.e2e.yml first</span></code></pre>
+pnpm gen:api                              <span class="c"># after an API change: regenerate the typed client</span></code></pre>
   <div class="cards">
     <div class="card"><h5>Real database in tests</h5><p>Tests run against the real pgvector container: the merge SQL, <code>COPY</code>, the advisory lock and the HNSW index are all tested against Postgres itself.</p></div>
-    <div class="card"><h5>Fakes only at the edges</h5><p>Nothing is patched by import path. The backfill takes an <code>Embedder</code>, and AI search's adapters are chosen in settings (<code>AI_SEARCH_EMBEDDER</code>, <code>AI_SEARCH_PICKER</code>), so tests use <code>queries/tests/fakes.py</code>. <code>LLMPicker</code> runs one contract per provider with Pydantic AI and the real SDKs against local HTTP servers.</p></div>
+    <div class="card"><h5>Fakes only at the edges</h5><p>Nothing is patched by import path. The backfill takes an <code>Embedder</code>, and AI search's adapters are passed to the resolver, so tests use <code>queries/tests/fakes.py</code>. No end-to-end or HTTP-level tests: the suite covers domain and service code.</p></div>
     <div class="card"><h5>Fixtures are real Parquet</h5><p>Each test writes a small Parquet file with the same column types as the real source, so pyarrow follows the same code path as in production.</p></div>
   </div>
 </section>

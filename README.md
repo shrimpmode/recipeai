@@ -17,14 +17,14 @@ There is also a **keyword search** mode (no AI): a direct, indexed search of rec
 
 ## Why it's built this way
 
-- **Async by design** — query resolution (embed → retrieve → rerank → generate) runs on a Celery worker, not the request thread, so slow embedding/LLM calls can't time out a web request.
+- **Async by design** — query resolution (understand → search with nutrition targets → check → generate) runs on a Celery worker, not the request thread, so slow embedding/LLM calls can't time out a web request.
 - **Goals are optional, retrieval isn't** — with no profile goals set, results fall back to pure semantic similarity; goals only kick in to re-rank, they never gate a user out of results.
 - **Always exactly 3 results** — the resolver enforces this explicitly (see `queries/services/resolution.py`) rather than trusting the LLM's output shape. The Celery task re-queues transient failures with backoff and fails permanent ones (e.g. a bad API key) at once ([ADR 0005](docs/adr/0005-ai-search-resolution-seams-and-retries.md)).
 - **Embeddings run locally** — no API key or per-query cost for the retrieval step; only the final selection/description call goes to the LLM provider.
 
 ## Stack
 
-Next.js (App Router, TypeScript, Tailwind) · Django + Django REST Framework (JSON API, OpenAPI via drf-spectacular) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Pydantic AI + Anthropic Claude Haiku (provider configurable) · Playwright · Docker Compose
+Next.js (App Router, TypeScript, Tailwind) · Django + Django REST Framework (JSON API, OpenAPI via drf-spectacular) · Postgres + `pgvector` · Redis + Celery · `sentence-transformers` (`all-MiniLM-L6-v2`) · Pydantic AI + Anthropic Claude Haiku (provider configurable) · Docker Compose
 
 The browser only talks to Next.js; Next.js proxies `/api` to Django, so sessions and CSRF work on one origin. See [ADR 0003](docs/adr/0003-nextjs-frontend-django-api.md).
 
@@ -82,17 +82,6 @@ pnpm install
 pnpm dev                 # proxies /api to BACKEND_URL (default http://localhost:8000)
 pnpm lint && pnpm typecheck
 pnpm gen:api             # after changing the Django API: re-export OpenAPI + regenerate TS types
-```
-
-### End-to-end tests
-
-Playwright runs against the real stack; only the Claude API is replaced, by a local stub (`frontend/e2e/claude-stub`) that the worker reaches through `ANTHROPIC_BASE_URL`. Each test creates its own users and recipes; a global teardown deletes them afterwards, since the E2E stack uses the dev database.
-
-```
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build
-cd frontend && pnpm exec playwright install chromium && pnpm test:e2e
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml rm -sf claude-stub
-docker compose up -d --force-recreate worker   # back to the real Claude API
 ```
 
 ### Local development

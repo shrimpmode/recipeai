@@ -1,3 +1,4 @@
+import type { GoalCheck } from "@/lib/api/types";
 import { formatAmount } from "@/lib/format";
 
 export type RecipeCardData = {
@@ -6,6 +7,7 @@ export type RecipeCardData = {
   sourceUrl: string;
   imageUrl: string | null;
   description?: string;
+  goalChecks?: GoalCheck[];
   calories: number | null;
   protein: number | null;
   carbs: number | null;
@@ -32,6 +34,34 @@ function MacroBar({ recipe }: { recipe: RecipeCardData }) {
         <span key={m.key} className={m.color} style={{ width: `${(energy[i] / total) * 100}%` }} />
       ))}
     </div>
+  );
+}
+
+const NUTRIENT_LABEL = { calories: "Calories", protein: "Protein", carbs: "Carbs", fat: "Fat", fiber: "Fiber" };
+const DIRECTION_SYMBOL = { at_least: "≥", at_most: "≤", around: "≈" };
+
+/** How the recipe compares to each nutrition target, per meal. */
+function GoalChecks({ checks }: { checks: GoalCheck[] }) {
+  return (
+    <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Your nutrition targets">
+      {checks.map((check) => {
+        const unit = check.nutrient === "calories" ? " kcal" : " g";
+        return (
+          <li
+            key={check.nutrient}
+            className={`rounded-full px-2.5 py-1 tabular-nums ${check.met ? "bg-accent-soft text-accent" : "bg-sunken text-muted"}`}
+          >
+            <span aria-hidden="true">{check.met ? "✓ " : "✗ "}</span>
+            {NUTRIENT_LABEL[check.nutrient]} {formatAmount(check.value, unit)}
+            <span className="opacity-70">
+              {" "}
+              (target {DIRECTION_SYMBOL[check.direction]} {formatAmount(check.target, unit)})
+            </span>
+            <span className="sr-only">{check.met ? ", met" : ", not met"}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -66,6 +96,7 @@ export function RecipeCard({ recipe }: { recipe: RecipeCardData }) {
           </p>
         </div>
         {recipe.description && <p className="mt-2 text-sm leading-relaxed text-muted">{recipe.description}</p>}
+        {recipe.goalChecks && recipe.goalChecks.length > 0 && <GoalChecks checks={recipe.goalChecks} />}
         <div className="mt-4">
           <MacroBar recipe={recipe} />
         </div>

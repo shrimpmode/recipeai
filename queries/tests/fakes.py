@@ -1,15 +1,20 @@
 """In-repo adapters for the AI search seams (queries/services/resolution.py).
 
-Selected through settings in API-level tests (`use_fake_adapters`) or passed
-straight to a `Resolver` in module tests. No patching by import path.
+Passed straight to a `Resolver` in tests. No patching by import path.
 """
 
 from typing import Any
 
 from django.conf import settings
-from django.test import override_settings
 
-from queries.services.resolution import Pick, default_resolver
+from queries.services.resolution import Interpretation, Pick
+
+
+class FakeInterpreter:
+    """Searches for the prompt as written and reads no nutrients from it."""
+
+    def interpret(self, prompt: str) -> Interpretation:
+        return Interpretation(search_phrase=prompt)
 
 
 class FakeEmbedder:
@@ -40,17 +45,3 @@ class FakePicker:
                 raise step
             return step
         return [Pick(c["recipe_id"], f"Picked {c['recipe_name']}.") for c in shortlist[:count]]
-
-
-use_fake_adapters = override_settings(
-    AI_SEARCH_EMBEDDER="queries.tests.fakes.FakeEmbedder",
-    AI_SEARCH_PICKER="queries.tests.fakes.FakePicker",
-)
-
-
-def fake_adapters() -> tuple[FakeEmbedder, FakePicker]:
-    """A fresh resolver's fakes, for a test to script and inspect (call in setUp)."""
-    default_resolver.cache_clear()
-    resolver = default_resolver()
-    assert isinstance(resolver.embedder, FakeEmbedder) and isinstance(resolver.picker, FakePicker)
-    return resolver.embedder, resolver.picker

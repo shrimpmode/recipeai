@@ -321,6 +321,46 @@
                     "username"
                 ]
             },
+            "DirectionEnum": {
+                "enum": [
+                    "at_least",
+                    "at_most",
+                    "around"
+                ],
+                "type": "string",
+                "description": "* `at_least` - at_least\n* `at_most` - at_most\n* `around` - around"
+            },
+            "GoalCheckOut": {
+                "type": "object",
+                "description": "How one result compares to one nutrition target (per meal).",
+                "properties": {
+                    "nutrient": {
+                        "$ref": "#/components/schemas/Nutrient"
+                    },
+                    "direction": {
+                        "$ref": "#/components/schemas/DirectionEnum"
+                    },
+                    "target": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "value": {
+                        "type": "number",
+                        "format": "double",
+                        "nullable": true
+                    },
+                    "met": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "direction",
+                    "met",
+                    "nutrient",
+                    "target",
+                    "value"
+                ]
+            },
             "Goals": {
                 "type": "object",
                 "description": "PUT replaces every goal: a field left out is cleared (default None).",
@@ -429,6 +469,28 @@
                     "detail"
                 ]
             },
+            "Nutrient": {
+                "enum": [
+                    "calories",
+                    "protein",
+                    "carbs",
+                    "fat",
+                    "fiber"
+                ],
+                "type": "string",
+                "description": "* `calories` - calories\n* `protein` - protein\n* `carbs` - carbs\n* `fat` - fat\n* `fiber` - fiber"
+            },
+            "ProgressEnum": {
+                "enum": [
+                    "understanding",
+                    "searching",
+                    "widening",
+                    "checking",
+                    "choosing"
+                ],
+                "type": "string",
+                "description": "* `understanding` - understanding\n* `searching` - searching\n* `widening` - widening\n* `checking` - checking\n* `choosing` - choosing"
+            },
             "QueryInRequest": {
                 "type": "object",
                 "properties": {
@@ -458,6 +520,18 @@
                         },
                         "nullable": true
                     },
+                    "progress": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProgressEnum"
+                        }
+                    },
+                    "unmet_targets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Nutrient"
+                        }
+                    },
                     "elapsed_seconds": {
                         "type": "number",
                         "format": "double",
@@ -477,8 +551,10 @@
                     "elapsed_seconds",
                     "expires_at",
                     "id",
+                    "progress",
                     "results",
-                    "status"
+                    "status",
+                    "unmet_targets"
                 ]
             },
             "QueryStatus": {
@@ -624,6 +700,12 @@
                         "type": "number",
                         "format": "double",
                         "nullable": true
+                    },
+                    "goal_checks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/GoalCheckOut"
+                        }
                     }
                 },
                 "required": [

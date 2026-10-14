@@ -37,10 +37,12 @@ class QueryRequestLifecycleTests(TestCase):
         query_request = self._request()
 
         self.assertTrue(query_request.start())
-        self.assertTrue(query_request.succeed([{"recipe_id": 1}]))
+        self.assertTrue(query_request.succeed([{"recipe_id": 1}], ["fiber"]))
 
         stored = QueryRequest.objects.get(pk=query_request.pk)
-        self.assertEqual((stored.status, stored.results), (Status.DONE, [{"recipe_id": 1}]))
+        self.assertEqual(
+            (stored.status, stored.results, stored.unmet_targets), (Status.DONE, [{"recipe_id": 1}], ["fiber"])
+        )
         self.assertTrue(stored.is_finished)
         assert stored.finished_at is not None and stored.elapsed_seconds is not None
         self.assertGreaterEqual(stored.elapsed_seconds, 0)
@@ -62,7 +64,7 @@ class QueryRequestLifecycleTests(TestCase):
         stale_copy = QueryRequest.objects.get(pk=query_request.pk)
         stale_copy.status = Status.RUNNING  # what a stale in-memory copy would believe
 
-        self.assertFalse(stale_copy.succeed([{"recipe_id": 1}]))
+        self.assertFalse(stale_copy.succeed([{"recipe_id": 1}], []))
         self.assertFalse(stale_copy.start())
 
         stored = QueryRequest.objects.get(pk=query_request.pk)
@@ -99,10 +101,26 @@ class QueryRequestLifecycleTests(TestCase):
         for transition in ("start", "succeed"):
             with self.subTest(transition=transition):
                 query_request = self._overdue()
-                args = ([{"recipe_id": 1}],) if transition == "succeed" else ()
+                args = ([{"recipe_id": 1}], []) if transition == "succeed" else ()
 
                 self.assertFalse(getattr(query_request, transition)(*args))
                 self.assertEqual(QueryRequest.objects.get(pk=query_request.pk).status, Status.ERROR)
+
+    def test_progress_is_recorded_only_while_running_and_restarts_on_a_retry(self):
+        query_request = self._request()
+        self.assertFalse(query_request.report_step("understanding"))  # still pending
+
+        query_request.start()
+        self.assertTrue(query_request.report_step("understanding"))
+        self.assertTrue(query_request.report_step("searching"))
+        self.assertEqual(QueryRequest.objects.get(pk=query_request.pk).progress, ["understanding", "searching"])
+
+        query_request.start()  # the task's retry
+        self.assertEqual(QueryRequest.objects.get(pk=query_request.pk).progress, [])
+
+        query_request.fail("boom")
+        self.assertFalse(query_request.report_step("choosing"))
+        self.assertEqual(QueryRequest.objects.get(pk=query_request.pk).progress, [])
 
     @override_settings(QUERY_DEADLINE_SECONDS=150)
     def test_a_row_without_a_stamped_deadline_falls_back_to_created_at(self):
@@ -116,8 +134,8 @@ class QueryRequestLifecycleTests(TestCase):
 
 class DeadlineConfigTests(TestCase):
     @override_settings(QUERY_TASK_MAX_RETRIES=3, AI_SEARCH_MODEL_TIMEOUT_SECONDS=30, QUERY_RETRY_BACKOFF_SECONDS=2)
-    def test_worst_case_is_every_attempt_timing_out_plus_every_backoff_ceiling(self):
-        self.assertEqual(worst_case_seconds(), 4 * 30 + (2 + 4 + 8))
+    def test_worst_case_is_every_model_call_timing_out_plus_every_backoff_ceiling(self):
+        self.assertEqual(worst_case_seconds(), 4 * 2 * 30 + (2 + 4 + 8))
 
     def test_startup_rejects_a_deadline_shorter_than_the_retry_worst_case(self):
         config = QueriesConfig.create("queries")

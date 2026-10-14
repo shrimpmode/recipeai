@@ -109,7 +109,10 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     # Separate request/response components, so response fields are all marked required.
     "COMPONENT_SPLIT_REQUEST": True,
-    "ENUM_NAME_OVERRIDES": {"QueryStatus": "queries.models.QueryRequest.Status"},
+    "ENUM_NAME_OVERRIDES": {
+        "QueryStatus": "queries.models.QueryRequest.Status",
+        "Nutrient": "queries.api.NUTRIENT_CHOICES",
+    },
 }
 
 # --- Logging ------------------------------------------------------------
@@ -169,14 +172,16 @@ RETRIEVAL_RERANKED_COUNT = 5
 RESULT_COUNT = 3
 
 # --- AI search resolution (queries/services/resolution.py) ----------------
-# Adapters at the resolver's two seams; tests swap in queries.tests.fakes.
+# Adapters at the resolver's seams; tests swap in queries.tests.fakes.
 # Checked at startup (QueriesConfig.ready).
+AI_SEARCH_INTERPRETER = "queries.services.generation.LLMInterpreter"
 AI_SEARCH_EMBEDDER = "recipes.services.embeddings.LocalEmbedder"
 AI_SEARCH_PICKER = "queries.services.generation.LLMPicker"
-# The LLM behind LLMPicker, as "provider:model" (providers: queries/services/model_providers.py).
+# The LLM behind LLMInterpreter and LLMPicker, as "provider:model" (providers: queries/services/model_providers.py).
 AI_SEARCH_MODEL = os.environ.get("AI_SEARCH_MODEL", "anthropic:claude-haiku-4-5-20251001")
-# One model call; the SDK's own retries are off (the Celery task retries).
-AI_SEARCH_MODEL_TIMEOUT_SECONDS = float(os.environ.get("AI_SEARCH_MODEL_TIMEOUT_SECONDS", "30"))
+# One model call; the SDK's own retries are off (the Celery task retries). Each attempt makes
+# AI_CALLS_PER_ATTEMPT (2) calls, so 15 s keeps the worst case within QUERY_DEADLINE_SECONDS.
+AI_SEARCH_MODEL_TIMEOUT_SECONDS = float(os.environ.get("AI_SEARCH_MODEL_TIMEOUT_SECONDS", "15"))
 # Retries after the first attempt, re-queued with backoff of ~2, 4, 8 s (with jitter).
 QUERY_TASK_MAX_RETRIES = 3
 QUERY_RETRY_BACKOFF_SECONDS = 2.0
