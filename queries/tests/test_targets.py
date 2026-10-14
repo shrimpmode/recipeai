@@ -84,6 +84,16 @@ class RankKeyTests(SimpleTestCase):
         self.assertLess(rank_key({Nutrient.CALORIES: 700}, [band]), rank_key({Nutrient.CALORIES: 800}, [band]))
         self.assertLess(rank_key({Nutrient.CALORIES: 800}, [band]), rank_key({Nutrient.CALORIES: 900}, [band]))
 
+    def test_a_nutrient_the_user_asked_for_outranks_any_number_of_saved_goals(self):
+        protein = target(Nutrient.PROTEIN, Direction.AT_LEAST, 80, Source.REQUEST)
+        calories = target(Nutrient.CALORIES, Direction.AROUND, 600)
+        fat = target(Nutrient.FAT, Direction.AROUND, 20)
+        targets = [protein, calories, fat]
+        meets_the_request = {Nutrient.PROTEIN: 85, Nutrient.CALORIES: 900, Nutrient.FAT: 40}
+        meets_both_goals = {Nutrient.PROTEIN: 30, Nutrient.CALORIES: 600, Nutrient.FAT: 20}
+
+        self.assertLess(rank_key(meets_the_request, targets), rank_key(meets_both_goals, targets))
+
 
 class WideningLevelsTests(SimpleTestCase):
     def test_goals_are_loosened_then_dropped_before_the_request_is(self):

@@ -14,7 +14,7 @@ Terms used in code, ADRs and reviews. Keep them consistent.
 - **Nutrition target**: one nutrient a request's recipes must meet, per meal, from the user's goals or named in the request; the request wins (`queries/services/targets.py`).
 - **Widening**: loosening the search's target limits in a fixed order (goals loosened, goals dropped, all dropped) while too few recipes match (`widening_levels`).
 - **Goal check**: how one result compares to one target: target, value, met or not (`goal_checks` on each result). **Unmet targets**: the nutrients none of the results meets.
-- **Shortlist**: the recipes the picker chooses from: those meeting the targets (widened if needed), nearest first, ranked by targets met (`RETRIEVAL_RERANKED_COUNT`, 5).
+- **Shortlist**: the recipes the picker chooses from: those meeting the targets (widened if needed), ranked by the request's nutrients met, then targets met, then nearest (`RETRIEVAL_RERANKED_COUNT`, 5).
 - **Pick**: one recipe the picker chose from the shortlist, with a short description of why it fits.
 - **Picker**: whatever chooses and describes the final recipes (`RecipePicker`). In production that is an LLM through Pydantic AI (`LLMPicker`).
 - **Model spec**: the `provider:model` string naming the LLM behind the picker (`AI_SEARCH_MODEL`, e.g. `anthropic:claude-haiku-4-5-20251001`). Providers are registered in `queries/services/model_providers.py` (ADR 0006).
