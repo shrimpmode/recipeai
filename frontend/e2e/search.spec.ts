@@ -34,7 +34,7 @@ test("keyword search matches ingredients and says when nothing matches", async (
   await expect(page.getByText(`No recipes have “nothing${token}” in their name or ingredients.`)).toBeVisible();
 });
 
-test("AI search returns three described recipes and the time it took", async ({ page }) => {
+test("AI search shows its progress, then three described recipes and the time it took", async ({ page }) => {
   // The first AI search in a fresh worker loads the embedding model.
   test.setTimeout(180_000);
   const token = uniqueToken();
@@ -45,7 +45,8 @@ test("AI search returns three described recipes and the time it took", async ({ 
   await page.getByRole("searchbox").fill("something warm and high in fibre");
   await page.getByRole("button", { name: "Ask" }).click();
 
-  await expect(page.getByText("Finding recipes for you…")).toBeVisible();
+  // The first step stays up while a fresh worker loads the embedding model.
+  await expect(page.getByText("Understanding your request")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("recipe-card")).toHaveCount(3, { timeout: 150_000 });
   await expect(page.getByText(/^Stub pick: /)).toHaveCount(3);
   await expect(page.getByTestId("search-elapsed")).toHaveText(/^Found in \d+(\.\d)? (ms|s)$/);

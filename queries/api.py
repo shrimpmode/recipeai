@@ -7,12 +7,27 @@ from rest_framework.views import APIView
 
 from config.rest import request_user
 from queries.models import QueryRequest
+from queries.services.resolution import Step
+from queries.services.targets import Direction, Nutrient
 from queries.tasks import resolve_query
 
 
 class QueryInSerializer(serializers.Serializer):
     # CharField trims whitespace and rejects blank, so "   " is a 400.
     prompt = serializers.CharField(max_length=1000)
+
+
+NUTRIENT_CHOICES = [n.value for n in Nutrient]
+
+
+class GoalCheckOutSerializer(serializers.Serializer):
+    """How one result compares to one nutrition target (per meal)."""
+
+    nutrient = serializers.ChoiceField(choices=NUTRIENT_CHOICES)
+    direction = serializers.ChoiceField(choices=[d.value for d in Direction])
+    target = serializers.FloatField()
+    value = serializers.FloatField(allow_null=True)
+    met = serializers.BooleanField()
 
 
 class ResultOutSerializer(serializers.Serializer):
@@ -30,12 +45,18 @@ class ResultOutSerializer(serializers.Serializer):
     fiber_g_per_serving = serializers.FloatField(allow_null=True)
     sugar_g_per_serving = serializers.FloatField(allow_null=True)
     sodium_mg_per_serving = serializers.FloatField(allow_null=True)
+    # Empty when the request had no targets; missing on results stored before goal checks existed.
+    goal_checks = GoalCheckOutSerializer(many=True, default=list)
 
 
 class QueryOutSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     status = serializers.ChoiceField(choices=QueryRequest.Status.choices)
     results = ResultOutSerializer(many=True, allow_null=True)
+    # Steps started so far, in order (codes; the client owns the labels). Restarts on a retry.
+    progress = serializers.ListField(child=serializers.ChoiceField(choices=[s.value for s in Step]))
+    # Nutrients none of the results meets (done only).
+    unmet_targets = serializers.ListField(child=serializers.ChoiceField(choices=NUTRIENT_CHOICES))
     # Set once the request is finished (done or error): submit-to-finish time, queueing included.
     elapsed_seconds = serializers.FloatField(allow_null=True)
     created_at = serializers.DateTimeField()
@@ -50,6 +71,8 @@ def _query_out(query_request: QueryRequest) -> dict:
             "id": query_request.id,
             "status": query_request.status,
             "results": query_request.results if query_request.status == QueryRequest.Status.DONE else None,
+            "progress": query_request.progress,
+            "unmet_targets": query_request.unmet_targets,
             "elapsed_seconds": query_request.elapsed_seconds,
             "created_at": query_request.created_at,
             "expires_at": query_request.deadline,

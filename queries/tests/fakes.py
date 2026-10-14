@@ -9,7 +9,17 @@ from typing import Any
 from django.conf import settings
 from django.test import override_settings
 
-from queries.services.resolution import Pick, default_resolver
+from queries.services.resolution import Interpretation, Pick, default_resolver
+
+
+class FakeInterpreter:
+    """Searches for the prompt as written and reads no nutrients from it, unless a test sets `intents`."""
+
+    def __init__(self) -> None:
+        self.intents: list = []
+
+    def interpret(self, prompt: str) -> Interpretation:
+        return Interpretation(search_phrase=prompt, intents=self.intents)
 
 
 class FakeEmbedder:
@@ -43,6 +53,7 @@ class FakePicker:
 
 
 use_fake_adapters = override_settings(
+    AI_SEARCH_INTERPRETER="queries.tests.fakes.FakeInterpreter",
     AI_SEARCH_EMBEDDER="queries.tests.fakes.FakeEmbedder",
     AI_SEARCH_PICKER="queries.tests.fakes.FakePicker",
 )

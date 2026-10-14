@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import models
+from django.db.models import JSONField, Value
 from django.utils import timezone
 
 
@@ -22,7 +23,9 @@ class QueryRequest(models.Model):
     request whose worker died still finishes.
 
     `results`, once DONE, holds exactly RESULT_COUNT dicts of the shape built
-    by `queries.services.resolution._result`.
+    by `queries.services.resolution._result`, and `unmet_targets` the nutrients
+    none of them meets. While running, `progress` lists the steps started so far
+    (`queries.services.resolution.Step` codes), for the page to show.
     """
 
     class Status(models.TextChoices):
@@ -49,6 +52,9 @@ class QueryRequest(models.Model):
     # TODO(contract): make both NOT NULL once every deployed web process sets expires_at.
     expires_at = models.DateTimeField(null=True, default=_default_expiry)
     finished_at = models.DateTimeField(null=True, blank=True)
+    # db_default so web processes still on the previous code can insert rows (expand step).
+    progress = models.JSONField(default=list, db_default=Value([], JSONField()), blank=True)
+    unmet_targets = models.JSONField(default=list, db_default=Value([], JSONField()), blank=True)
 
     def __str__(self) -> str:
         return f"QueryRequest({self.id}, {self.status})"
@@ -72,16 +78,29 @@ class QueryRequest(models.Model):
         return not self.is_finished and (now or timezone.now()) >= self.deadline
 
     def start(self) -> bool:
-        """Mark running (again, on a retry). False if finished or overdue (then it is expired)."""
+        """Mark running (again on a retry, progress restarting). False if finished or overdue (then it is expired)."""
         if self.expire_if_overdue():
             return False
-        return self._transition(self.Status.RUNNING)
+        return self._transition(self.Status.RUNNING, progress=[])
 
-    def succeed(self, results: list[dict]) -> bool:
+    def report_step(self, step: str) -> bool:
+        """Record that a step started. Only while running: a late report can't touch a finished request.
+        The worker is the only writer of `progress`, so read-modify-write is safe."""
+        progress = [*self.progress, str(step)]
+        updated = QueryRequest.objects.filter(pk=self.pk, status=self.Status.RUNNING).update(
+            progress=progress, updated_at=timezone.now()
+        )
+        if updated:
+            self.progress = progress
+        return bool(updated)
+
+    def succeed(self, results: list[dict], unmet_targets: list[str]) -> bool:
         """Store the results. False if already finished or overdue (then it is expired instead)."""
         if self.expire_if_overdue():
             return False
-        return self._transition(self.Status.DONE, results=results, finished_at=timezone.now())
+        return self._transition(
+            self.Status.DONE, results=results, unmet_targets=unmet_targets, finished_at=timezone.now()
+        )
 
     def fail(self, message: str) -> bool:
         """End with an error. The message is for logs and admins, never the API (it can hold provider details)."""

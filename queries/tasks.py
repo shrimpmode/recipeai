@@ -30,7 +30,7 @@ from django.utils import timezone
 
 from accounts.models import Profile
 from queries.models import QueryRequest
-from queries.services.resolution import PermanentFailure, default_resolver
+from queries.services.resolution import AI_CALLS_PER_ATTEMPT, PermanentFailure, default_resolver
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def worst_case_seconds() -> float:
     """Longest a request can take if every attempt times out and every backoff hits its ceiling
     (queueing excluded). QUERY_DEADLINE_SECONDS must cover it (checked by QueriesConfig.ready)."""
     retries = settings.QUERY_TASK_MAX_RETRIES
-    attempts = (retries + 1) * settings.AI_SEARCH_MODEL_TIMEOUT_SECONDS
+    attempts = (retries + 1) * AI_CALLS_PER_ATTEMPT * settings.AI_SEARCH_MODEL_TIMEOUT_SECONDS
     backoff = sum(settings.QUERY_RETRY_BACKOFF_SECONDS * 2**n for n in range(retries))
     return attempts + backoff
 
@@ -64,7 +64,7 @@ def _resolve_query(self: Task, query_request_id: int) -> None:
     started = time.monotonic()
     try:
         profile = Profile.objects.filter(user_id=query_request.user_id).first()
-        results = default_resolver().resolve(query_request.prompt, profile)
+        resolution = default_resolver().resolve(query_request.prompt, profile, report=query_request.report_step)
     except (PermanentFailure, ImproperlyConfigured) as exc:
         _mark_failed(query_request, exc, log_context | {"retryable": False, "duration_ms": _elapsed_ms(started)})
         return
@@ -78,7 +78,7 @@ def _resolve_query(self: Task, query_request_id: int) -> None:
         logger.warning("query_attempt_failed", exc_info=True, extra=log_context | {"retry_in_s": round(delay, 1)})
         raise self.retry(exc=exc, countdown=delay) from exc
 
-    if not query_request.succeed(results):
+    if not query_request.succeed(resolution.results, resolution.unmet_targets):
         _log_already_ended(query_request, log_context, discarded_results=True)
         return
     logger.info("query_resolution_succeeded", extra=log_context | {"duration_ms": _elapsed_ms(started)})

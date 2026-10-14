@@ -149,6 +149,23 @@ export interface components {
             username: string;
             password: string;
         };
+        /**
+         * @description * `at_least` - at_least
+         *     * `at_most` - at_most
+         *     * `around` - around
+         * @enum {string}
+         */
+        DirectionEnum: "at_least" | "at_most" | "around";
+        /** @description How one result compares to one nutrition target (per meal). */
+        GoalCheckOut: {
+            nutrient: components["schemas"]["Nutrient"];
+            direction: components["schemas"]["DirectionEnum"];
+            /** Format: double */
+            target: number;
+            /** Format: double */
+            value: number | null;
+            met: boolean;
+        };
         /** @description PUT replaces every goal: a field left out is cleared (default None). */
         Goals: {
             /** Format: double */
@@ -182,6 +199,24 @@ export interface components {
         Message: {
             detail: string;
         };
+        /**
+         * @description * `calories` - calories
+         *     * `protein` - protein
+         *     * `carbs` - carbs
+         *     * `fat` - fat
+         *     * `fiber` - fiber
+         * @enum {string}
+         */
+        Nutrient: "calories" | "protein" | "carbs" | "fat" | "fiber";
+        /**
+         * @description * `understanding` - understanding
+         *     * `searching` - searching
+         *     * `widening` - widening
+         *     * `checking` - checking
+         *     * `choosing` - choosing
+         * @enum {string}
+         */
+        ProgressEnum: "understanding" | "searching" | "widening" | "checking" | "choosing";
         QueryInRequest: {
             prompt: string;
         };
@@ -189,6 +224,8 @@ export interface components {
             id: number;
             status: components["schemas"]["QueryStatus"];
             results: components["schemas"]["ResultOut"][] | null;
+            progress: components["schemas"]["ProgressEnum"][];
+            unmet_targets: components["schemas"]["Nutrient"][];
             /** Format: double */
             elapsed_seconds: number | null;
             /** Format: date-time */
@@ -247,6 +284,7 @@ export interface components {
             sugar_g_per_serving: number | null;
             /** Format: double */
             sodium_mg_per_serving: number | null;
+            goal_checks?: components["schemas"]["GoalCheckOut"][];
         };
         SearchOut: {
             query: string;
