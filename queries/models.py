@@ -23,8 +23,9 @@ class QueryRequest(models.Model):
     request whose worker died still finishes.
 
     `results`, once DONE, holds exactly RESULT_COUNT dicts of the shape built
-    by `queries.services.resolution._result`, and `unmet_targets` the nutrients
-    none of them meets. While running, `progress` lists the steps started so far
+    by `queries.services.resolution._result` (none when `off_topic`: declined
+    after understanding), and `unmet_targets` the nutrients none of them meets.
+    While running, `progress` lists the steps started so far
     (`queries.services.resolution.Step` codes), for the page to show.
     """
 
@@ -55,6 +56,7 @@ class QueryRequest(models.Model):
     # db_default so web processes still on the previous code can insert rows (expand step).
     progress = models.JSONField(default=list, db_default=Value([], JSONField()), blank=True)
     unmet_targets = models.JSONField(default=list, db_default=Value([], JSONField()), blank=True)
+    off_topic = models.BooleanField(default=False, db_default=False)
 
     def __str__(self) -> str:
         return f"QueryRequest({self.id}, {self.status})"
@@ -94,12 +96,16 @@ class QueryRequest(models.Model):
             self.progress = progress
         return bool(updated)
 
-    def succeed(self, results: list[dict], unmet_targets: list[str]) -> bool:
+    def succeed(self, results: list[dict], unmet_targets: list[str], off_topic: bool = False) -> bool:
         """Store the results. False if already finished or overdue (then it is expired instead)."""
         if self.expire_if_overdue():
             return False
         return self._transition(
-            self.Status.DONE, results=results, unmet_targets=unmet_targets, finished_at=timezone.now()
+            self.Status.DONE,
+            results=results,
+            unmet_targets=unmet_targets,
+            off_topic=off_topic,
+            finished_at=timezone.now(),
         )
 
     def fail(self, message: str) -> bool:

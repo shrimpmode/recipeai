@@ -393,6 +393,8 @@
       <strong>Understand.</strong> The model named by <code>AI_SEARCH_MODEL</code> returns a search phrase and the nutrients the
       prompt asks to be high or low, validated by Pydantic. These are merged with the user's goals into per-meal targets
       (a third of each daily goal): protein and fiber are minimums, calories, carbs and fat are bands (±20%).
+      A request it finds clearly not about food (<code>on_topic</code> false; when unsure it's on topic) stops here: the
+      request ends as <code>done</code> with no results and <code>off_topic</code> set, and the page says it only helps with meals.
       <div class="where">RequestInterpreter seam · queries/services/generation.py · LLMInterpreter · queries/services/targets.py · merge_targets</div>
     </li>
     <li>
@@ -429,7 +431,7 @@
       <div class="where">queries/tasks.py · queries/models.py (start, succeed, fail, expire_if_overdue)</div>
     </li>
     <li>
-      <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the steps started so far (<code>progress</code>, which the page shows as a list), the results and <code>unmet_targets</code> once done, and
+      <strong>Poll.</strong> <code>GET /api/queries/{id}</code> returns the status, the steps started so far (<code>progress</code>, which the page shows as a list), the results, <code>unmet_targets</code> and <code>off_topic</code> once done, and
       <code>elapsed_seconds</code> once finished, plus <code>created_at</code> and <code>expires_at</code>. A request past its deadline
       is ended as an error before the answer is sent, so a request whose worker died still finishes. The provider's error text is logged but never returned. It is scoped to the owner,
       so asking for another user's request returns 404.

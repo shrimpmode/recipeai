@@ -40,6 +40,7 @@ type View =
       recipes: RecipeCardData[];
       elapsedMs: number;
       unmetTargets: Nutrient[];
+      offTopic: boolean;
     }
   | { kind: "error"; message: string };
 
@@ -86,7 +87,7 @@ export function SearchPanel() {
   async function keywordSearch(q: string) {
     const { data } = await api.GET("/api/search", { params: { query: { q } } });
     if (!data) throw new SearchFailed("Search failed. Try again.");
-    return { recipes: data.results.map(fromKeyword), elapsedMs: data.elapsed_ms, unmetTargets: [] };
+    return { recipes: data.results.map(fromKeyword), elapsedMs: data.elapsed_ms, unmetTargets: [], offTopic: false };
   }
 
   async function aiSearch(prompt: string, myTicket: number, startedAt: number) {
@@ -117,6 +118,7 @@ export function SearchPanel() {
       recipes: query.results.map(fromAi),
       elapsedMs: (query.elapsed_seconds ?? 0) * 1000,
       unmetTargets: query.unmet_targets,
+      offTopic: query.off_topic,
     };
   }
 
@@ -199,6 +201,13 @@ function SearchOutcome({ view }: { view: View }) {
 }
 
 function Results({ view }: { view: Extract<View, { kind: "results" }> }) {
+  if (view.offTopic) {
+    return (
+      <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-muted">
+        I can only help with meals and recipes. Try something like “a high-protein breakfast”.
+      </p>
+    );
+  }
   const count = view.recipes.length;
   const summary =
     view.mode === "ai"
